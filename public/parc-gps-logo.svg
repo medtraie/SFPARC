@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="45%" r="60%">
+      <stop offset="0%" stop-color="#ff5a3c" />
+      <stop offset="55%" stop-color="#ff2a12" />
+      <stop offset="100%" stop-color="#b30000" />
+    </radialGradient>
+    <linearGradient id="pin" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ff2d1f" />
+      <stop offset="100%" stop-color="#a10000" />
+    </linearGradient>
+  </defs>
+  <circle cx="128" cy="116" r="96" fill="url(#glow)" />
+  <path d="M128 36c-41.4 0-75 33.6-75 75 0 55.2 75 109 75 109s75-53.8 75-109c0-41.4-33.6-75-75-75z" fill="url(#pin)" />
+  <circle cx="128" cy="112" r="34" fill="#7a0b0b" opacity="0.85" />
+  <g transform="translate(88 96)">
+    <rect x="0" y="6" width="52" height="22" rx="4" fill="#ffffff" />
+    <rect x="52" y="12" width="20" height="16" rx="3" fill="#ffffff" />
+    <rect x="6" y="2" width="20" height="10" rx="2" fill="#ffd9c9" />
+    <circle cx="16" cy="32" r="6" fill="#ffd166" />
+    <circle cx="52" cy="32" r="6" fill="#ffd166" />
+  </g>
+  <text x="128" y="240" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="700" fill="#ffffff">Parc Gps</text>
+</svg>

@@ -1,0 +1,16 @@
+project_id = "yhjxcnsbrngmppcprkoh"
+
+[functions.gpswox]
+verify_jwt = false
+
+[functions.gpswox-map]
+verify_jwt = false
+
+[functions.gpswox-geofences]
+verify_jwt = false
+
+[functions.gpswox-reports]
+verify_jwt = false
+
+[functions.gpswox-alerts]
+verify_jwt = false
