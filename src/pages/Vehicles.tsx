@@ -14,6 +14,12 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { useGPSwoxVehicles } from '@/hooks/useGPSwoxVehicles';
+import { useGPSwoxReports, VehicleReport } from '@/hooks/useGPSwoxReports';
+import {
+  extractVehicleOdometer,
+  extractVehicleDistanceToday,
+  extractVehicleMaxSpeed,
+} from '@/lib/gpswox-sensors';
 import { cn } from '@/lib/utils';
 import {
   Dialog,
@@ -35,19 +41,64 @@ export default function Vehicles() {
   const [detailsVehicleId, setDetailsVehicleId] = useState<string | null>(null);
 
   const { data: vehicles = [], isLoading, isError, error, refetch, isFetching } = useGPSwoxVehicles(30000);
+  const { data: reportsData } = useGPSwoxReports(30000);
   const BATTERY_MAINTENANCE_THRESHOLD_V = 9;
+
+  // Map reports data to vehicles for odometer, daily distance and overspeeds
+  const vehicleReportMap = useMemo(() => {
+    const map = new Map<string, VehicleReport>();
+    if (reportsData?.reports?.vehicles && Array.isArray(reportsData.reports.vehicles)) {
+      for (const r of reportsData.reports.vehicles) {
+        map.set(String(r.id), r);
+        if (r.name) map.set(r.name.toLowerCase().trim(), r);
+      }
+    }
+    return map;
+  }, [reportsData]);
+
+  const vehicleOverspeedMap = useMemo(() => {
+    const map = new Map<string, number>();
+    if (reportsData?.reports?.overspeeds && Array.isArray(reportsData.reports.overspeeds)) {
+      for (const ov of reportsData.reports.overspeeds) {
+        const idKey = String(ov.device_id);
+        const nameKey = ov.device_name?.toLowerCase().trim();
+        const currentIdMax = map.get(idKey) || 0;
+        if (ov.speed > currentIdMax) map.set(idKey, ov.speed);
+        if (nameKey) {
+          const currentNameMax = map.get(nameKey) || 0;
+          if (ov.speed > currentNameMax) map.set(nameKey, ov.speed);
+        }
+      }
+    }
+    return map;
+  }, [reportsData]);
 
   const vehiclesWithDisplayStatus = useMemo(
     () =>
       vehicles.map((vehicle) => {
         const battery = vehicle.battery !== null ? Number(vehicle.battery) : null;
         const shouldBeMaintenance = vehicle.status === 'maintenance' && battery !== null && battery < BATTERY_MAINTENANCE_THRESHOLD_V;
+        const report = vehicleReportMap.get(String(vehicle.id)) || vehicleReportMap.get(vehicle.plate.toLowerCase().trim());
+        const highestOverspeed = Math.max(
+          vehicleOverspeedMap.get(String(vehicle.id)) || 0,
+          vehicleOverspeedMap.get(vehicle.plate.toLowerCase().trim()) || 0
+        );
+
+        const realOdometer = extractVehicleOdometer(vehicle, report);
+        const realDistanceToday = extractVehicleDistanceToday(vehicle, report);
+        const realMaxSpeed = extractVehicleMaxSpeed(vehicle, report, highestOverspeed);
+
         return {
           ...vehicle,
+          mileage: realOdometer,
+          distanceToday: realDistanceToday,
+          maxSpeedToday: realMaxSpeed,
+          report,
+          highestOverspeed,
           status: shouldBeMaintenance ? 'maintenance' as const : vehicle.status === 'maintenance' ? 'active' as const : vehicle.status,
         };
       }),
-    [vehicles]
+    [vehicles, vehicleReportMap, vehicleOverspeedMap]
   );
 
   const filteredVehicles = useMemo(() => {
@@ -134,73 +185,82 @@ export default function Vehicles() {
     <DashboardLayout>
       <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
         {/* Header */}
-        <div className="page-header">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/[0.08]">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Véhicules GPSwox</h1>
-            <p className="text-muted-foreground">
-              {isLoading ? 'Chargement...' : `${totalVehicles} véhicules • ${onlineCount} en ligne`}
+            <h1 className="text-2xl font-extrabold text-white tracking-tight flex items-center gap-2">
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-sky-300 to-blue-400">Véhicules</span>
+            </h1>
+            <p className="text-xs font-medium text-slate-400 mt-1">
+              {isLoading ? 'Chargement...' : `${totalVehicles} véhicules au total • ${onlineCount} connectés en direct`}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <Button 
               variant="outline" 
               onClick={() => refetch()}
               disabled={isFetching}
+              className="h-9 px-3.5 border-white/10 bg-[#0E1626] text-slate-200 hover:border-cyan-400/40 hover:text-cyan-400 hover:bg-white/[0.04]"
             >
               {isFetching ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                <Loader2 className="w-4 h-4 mr-2 animate-spin text-cyan-400" />
               ) : (
-                <RefreshCw className="w-4 h-4 mr-2" />
+                <RefreshCw className="w-4 h-4 mr-2 text-cyan-400" />
               )}
               Actualiser
             </Button>
-            <Button variant="outline" onClick={handleExport} disabled={sortedVehicles.length === 0}>
-              <Download className="w-4 h-4 mr-2" />
-              Exporter
+            <Button
+              variant="outline"
+              onClick={handleExport}
+              disabled={sortedVehicles.length === 0}
+              className="h-9 px-3.5 border-white/10 bg-[#0E1626] text-slate-200 hover:border-cyan-400/40 hover:text-cyan-400 hover:bg-white/[0.04]"
+            >
+              <Download className="w-4 h-4 mr-2 text-cyan-400" />
+              Exporter CSV
             </Button>
           </div>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
-          <div className="dashboard-panel p-4">
-            <div className="text-2xl font-bold text-foreground">{totalVehicles}</div>
-            <div className="text-sm text-muted-foreground">Total véhicules</div>
+        {/* 2026 Luxury Stats Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3.5">
+          <div className="rounded-2xl border border-white/[0.08] bg-[#121A2B] p-4 shadow-[6px_6px_16px_rgba(3,7,18,0.7),-3px_-3px_10px_rgba(255,255,255,0.02)] border-l-4 border-l-cyan-400">
+            <div className="text-2xl font-black text-white font-mono tracking-tight">{totalVehicles}</div>
+            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mt-1">Total véhicules</div>
           </div>
-          <div className="dashboard-panel p-4">
-            <div className="text-2xl font-bold text-success">{onlineCount}</div>
-            <div className="text-sm text-muted-foreground">En ligne</div>
+          <div className="rounded-2xl border border-white/[0.08] bg-[#121A2B] p-4 shadow-[6px_6px_16px_rgba(3,7,18,0.7),-3px_-3px_10px_rgba(255,255,255,0.02)] border-l-4 border-l-emerald-400">
+            <div className="text-2xl font-black text-emerald-400 font-mono tracking-tight">{onlineCount}</div>
+            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mt-1">En ligne</div>
           </div>
-          <div className="dashboard-panel p-4">
-            <div className="text-2xl font-bold text-muted-foreground">{offlineCount}</div>
-            <div className="text-sm text-muted-foreground">Hors ligne</div>
+          <div className="rounded-2xl border border-white/[0.08] bg-[#121A2B] p-4 shadow-[6px_6px_16px_rgba(3,7,18,0.7),-3px_-3px_10px_rgba(255,255,255,0.02)] border-l-4 border-l-slate-600">
+            <div className="text-2xl font-black text-slate-400 font-mono tracking-tight">{offlineCount}</div>
+            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mt-1">Hors ligne</div>
           </div>
-          <div className="dashboard-panel p-4">
-            <div className="text-2xl font-bold text-primary">{activeCount}</div>
-            <div className="text-sm text-muted-foreground">Actifs</div>
+          <div className="rounded-2xl border border-white/[0.08] bg-[#121A2B] p-4 shadow-[6px_6px_16px_rgba(3,7,18,0.7),-3px_-3px_10px_rgba(255,255,255,0.02)] border-l-4 border-l-sky-400">
+            <div className="text-2xl font-black text-sky-400 font-mono tracking-tight">{activeCount}</div>
+            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mt-1">Actifs</div>
           </div>
-          <div className="dashboard-panel p-4">
-            <div className="text-2xl font-bold text-info">{movingCount}</div>
-            <div className="text-sm text-muted-foreground">En mouvement</div>
+          <div className="rounded-2xl border border-white/[0.08] bg-[#121A2B] p-4 shadow-[6px_6px_16px_rgba(3,7,18,0.7),-3px_-3px_10px_rgba(255,255,255,0.02)] border-l-4 border-l-cyan-300">
+            <div className="text-2xl font-black text-cyan-300 font-mono tracking-tight">{movingCount}</div>
+            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mt-1">En mouvement</div>
           </div>
-          <div className="dashboard-panel p-4">
-            <div className="text-2xl font-bold text-destructive">{lowFuelCount}</div>
-            <div className="text-sm text-muted-foreground">Carburant bas</div>
+          <div className="rounded-2xl border border-white/[0.08] bg-[#121A2B] p-4 shadow-[6px_6px_16px_rgba(3,7,18,0.7),-3px_-3px_10px_rgba(255,255,255,0.02)] border-l-4 border-l-rose-500">
+            <div className="text-2xl font-black text-rose-400 font-mono tracking-tight">{lowFuelCount}</div>
+            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mt-1">Carburant bas</div>
           </div>
         </div>
 
+        {/* Quick Filter Badges */}
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="secondary" className="gap-1">
-            <Activity className="w-3.5 h-3.5" />
+          <Badge className="bg-cyan-500/15 text-cyan-300 border border-cyan-400/30 gap-1.5 py-1 px-3 rounded-xl font-bold text-xs">
+            <Activity className="w-3.5 h-3.5 text-cyan-400" />
             {movingCount} en mouvement
           </Badge>
-          <Badge variant="secondary" className="gap-1">
-            <Fuel className="w-3.5 h-3.5" />
-            {lowFuelCount} carburant bas
+          <Badge className="bg-amber-500/15 text-amber-300 border border-amber-400/30 gap-1.5 py-1 px-3 rounded-xl font-bold text-xs">
+            <Fuel className="w-3.5 h-3.5 text-amber-400" />
+            {lowFuelCount} carburant bas (&lt;20%)
           </Badge>
-          <Badge variant="secondary" className="gap-1">
-            <Battery className="w-3.5 h-3.5" />
-            {lowBatteryCount} batterie faible
+          <Badge className="bg-purple-500/15 text-purple-300 border border-purple-400/30 gap-1.5 py-1 px-3 rounded-xl font-bold text-xs">
+            <Battery className="w-3.5 h-3.5 text-purple-400" />
+            {lowBatteryCount} batterie basse (&lt;9V)
           </Badge>
         </div>
 
@@ -370,13 +430,26 @@ export default function Vehicles() {
             {viewMode === 'grid' ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-in fade-in duration-300">
                 {sortedVehicles.map((vehicle) => (
-                  <VehicleCard key={vehicle.id} vehicle={vehicle} onDetails={(v) => setDetailsVehicleId(String(v.id))} />
+                  <VehicleCard
+                    key={vehicle.id}
+                    vehicle={vehicle}
+                    report={(vehicle as any).report}
+                    highestOverspeed={(vehicle as any).highestOverspeed}
+                    onDetails={(v) => setDetailsVehicleId(String(v.id))}
+                  />
                 ))}
               </div>
             ) : (
               <div className="space-y-2 animate-in fade-in duration-300">
                 {sortedVehicles.map((vehicle) => (
-                  <VehicleCard key={vehicle.id} vehicle={vehicle} compact onDetails={(v) => setDetailsVehicleId(String(v.id))} />
+                  <VehicleCard
+                    key={vehicle.id}
+                    vehicle={vehicle}
+                    report={(vehicle as any).report}
+                    highestOverspeed={(vehicle as any).highestOverspeed}
+                    compact
+                    onDetails={(v) => setDetailsVehicleId(String(v.id))}
+                  />
                 ))}
               </div>
             )}
@@ -399,70 +472,88 @@ export default function Vehicles() {
         )}
       </div>
       <Dialog open={!!detailsVehicle} onOpenChange={(open) => !open && setDetailsVehicleId(null)}>
-        <DialogContent className="sm:max-w-[760px]">
+        <DialogContent className="sm:max-w-[760px] bg-[#121A2B] border-white/10 text-slate-100 shadow-2xl">
           <DialogHeader>
-            <DialogTitle>Détails véhicule {detailsVehicle?.plate || ''}</DialogTitle>
+            <DialogTitle className="text-xl font-extrabold text-white flex items-center gap-2">
+              <span className="text-cyan-400 font-mono">{detailsVehicle?.plate || ''}</span>
+              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-400/30">
+                Fiche Véhicule
+              </span>
+            </DialogTitle>
           </DialogHeader>
           {detailsVehicle && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-              <div className="rounded-lg border border-border p-3">
-                <p className="text-muted-foreground">Plaque</p>
-                <p className="font-medium">{detailsVehicle.plate}</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm mt-2">
+              <div className="rounded-xl border border-white/[0.08] bg-[#0E1626] p-3 shadow-inner">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Plaque d'immatriculation</p>
+                <p className="font-mono font-extrabold text-base text-white mt-0.5">{detailsVehicle.plate}</p>
               </div>
-              <div className="rounded-lg border border-border p-3">
-                <p className="text-muted-foreground">Marque / Modèle</p>
-                <p className="font-medium">{detailsVehicle.brand} {detailsVehicle.model}</p>
-              </div>
-              <div className="rounded-lg border border-border p-3">
-                <p className="text-muted-foreground">Statut</p>
-                <p className="font-medium">{detailsVehicle.status}</p>
-              </div>
-              <div className="rounded-lg border border-border p-3">
-                <p className="text-muted-foreground">Connexion</p>
-                <p className="font-medium">{detailsVehicle.online}</p>
-              </div>
-              <div className="rounded-lg border border-border p-3">
-                <p className="text-muted-foreground">Chauffeur</p>
-                <p className="font-medium">{detailsVehicle.driver || detailsVehicle.driverDetails?.name || '-'}</p>
-              </div>
-              <div className="rounded-lg border border-border p-3">
-                <p className="text-muted-foreground">IMEI</p>
-                <p className="font-medium">{detailsVehicle.imei}</p>
-              </div>
-              <div className="rounded-lg border border-border p-3">
-                <p className="text-muted-foreground">Kilométrage</p>
-                <p className="font-medium">{detailsVehicle.mileage.toLocaleString()} km</p>
-              </div>
-              <div className="rounded-lg border border-border p-3">
-                <p className="text-muted-foreground">Distance aujourd&apos;hui</p>
-                <p className="font-medium">{detailsVehicle.distanceToday?.toLocaleString() || '0'} km</p>
-              </div>
-              <div className="rounded-lg border border-border p-3">
-                <p className="text-muted-foreground">Carburant</p>
-                <p className="font-medium">{detailsVehicle.fuelQuantity !== null ? `${detailsVehicle.fuelQuantity}%` : '-'}</p>
-              </div>
-              <div className="rounded-lg border border-border p-3">
-                <p className="text-muted-foreground">Batterie</p>
-                <p className="font-medium">{detailsVehicle.battery !== null ? `${Number(detailsVehicle.battery).toFixed(2)} V` : '-'}</p>
-              </div>
-              <div className="rounded-lg border border-border p-3">
-                <p className="text-muted-foreground">Network / Protocol</p>
-                <p className="font-medium">{detailsVehicle.network ?? '-'} / {detailsVehicle.protocol || '-'}</p>
-              </div>
-              <div className="rounded-lg border border-border p-3">
-                <p className="text-muted-foreground">Dernière position</p>
-                <p className="font-medium">
-                  {detailsVehicle.lastPosition
-                    ? `${detailsVehicle.lastPosition.city} (${detailsVehicle.lastPosition.lat.toFixed(5)}, ${detailsVehicle.lastPosition.lng.toFixed(5)})`
-                    : '-'}
+              <div className="rounded-xl border border-white/[0.08] bg-[#0E1626] p-3 shadow-inner">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Modèle / Flotte</p>
+                <p className="font-semibold text-slate-200 mt-0.5">
+                  {detailsVehicle.model && detailsVehicle.model.toLowerCase() !== 'gps device' && detailsVehicle.model !== detailsVehicle.plate
+                    ? detailsVehicle.model
+                    : 'Véhicule de Flotte SFTM'}
                 </p>
               </div>
-              <div className="rounded-lg border border-border p-3 md:col-span-2">
-                <p className="text-muted-foreground">Dernière mise à jour</p>
-                <p className="font-medium">
+              <div className="rounded-xl border border-white/[0.08] bg-[#0E1626] p-3 shadow-inner">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Statut Opérationnel</p>
+                <p className="font-bold text-emerald-400 mt-0.5 capitalize">{detailsVehicle.status}</p>
+              </div>
+              <div className="rounded-xl border border-white/[0.08] bg-[#0E1626] p-3 shadow-inner">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Connexion GPS</p>
+                <p className="font-bold text-cyan-400 mt-0.5">{detailsVehicle.online === 'online' ? '🟢 En ligne' : detailsVehicle.online === 'ack' ? '🟡 En attente' : '⚫ Hors ligne'}</p>
+              </div>
+              <div className="rounded-xl border border-white/[0.08] bg-[#0E1626] p-3 shadow-inner">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Chauffeur Assigné</p>
+                <p className="font-semibold text-slate-200 mt-0.5">{detailsVehicle.driver || detailsVehicle.driverDetails?.name || 'Non assigné'}</p>
+              </div>
+              <div className="rounded-xl border border-white/[0.08] bg-[#0E1626] p-3 shadow-inner">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Balise IMEI</p>
+                <p className="font-mono text-slate-300 mt-0.5">{detailsVehicle.imei}</p>
+              </div>
+              <div className="rounded-xl border border-white/[0.08] bg-[#0E1626] p-3 shadow-inner">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Kilométrage (Odomètre)</p>
+                <p className="font-mono font-bold text-slate-100 mt-0.5">{Math.round(detailsVehicle.mileage || 0).toLocaleString()} km</p>
+              </div>
+              <div className="rounded-xl border border-cyan-500/20 bg-cyan-950/20 p-3 shadow-inner">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-cyan-300">Distance Aujourd'hui</p>
+                <p className="font-mono font-black text-cyan-300 text-base mt-0.5">
+                  {(detailsVehicle.distanceToday || 0) > 0
+                    ? ((detailsVehicle.distanceToday || 0) >= 10
+                        ? Math.round(detailsVehicle.distanceToday || 0).toLocaleString()
+                        : (detailsVehicle.distanceToday || 0).toFixed(1))
+                    : '0'}{' '}
+                  km
+                </p>
+              </div>
+              <div className="rounded-xl border border-amber-500/20 bg-amber-950/20 p-3 shadow-inner">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-amber-300">Vitesse Max Aujourd'hui</p>
+                <p className="font-mono font-black text-amber-300 text-base mt-0.5">
+                  {Math.round((detailsVehicle as any).maxSpeedToday || 0)} km/h
+                </p>
+              </div>
+              <div className="rounded-xl border border-white/[0.08] bg-[#0E1626] p-3 shadow-inner">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Niveau de Carburant</p>
+                <p className="font-mono font-bold text-slate-200 mt-0.5">{detailsVehicle.fuelQuantity !== null ? `${detailsVehicle.fuelQuantity}%` : '—'}</p>
+              </div>
+              <div className="rounded-xl border border-white/[0.08] bg-[#0E1626] p-3 shadow-inner md:col-span-2">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Tension Batterie</p>
+                <p className="font-mono font-bold text-slate-200 mt-0.5">{detailsVehicle.battery !== null ? `${Number(detailsVehicle.battery).toFixed(2)} V` : '—'}</p>
+              </div>
+              <div className="rounded-xl border border-white/[0.08] bg-[#0E1626] p-3 shadow-inner md:col-span-2">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Dernière Position GPS</p>
+                <p className="font-semibold text-slate-200 mt-0.5">
+                  {detailsVehicle.lastPosition
+                    ? `${detailsVehicle.lastPosition.address || detailsVehicle.lastPosition.city || ''} (${detailsVehicle.lastPosition.lat.toFixed(5)}, ${detailsVehicle.lastPosition.lng.toFixed(5)})`
+                    : 'Position indisponible'}
+                </p>
+              </div>
+              <div className="rounded-xl border border-white/[0.08] bg-[#0E1626] p-3 shadow-inner md:col-span-2">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Dernier Signal Reçu</p>
+                <p className="font-mono text-slate-300 mt-0.5">
                   {detailsVehicle.lastPosition?.timestamp
                     ? new Date(detailsVehicle.lastPosition.timestamp).toLocaleString('fr-FR')
-                    : '-'}
+                    : '—'}
                 </p>
               </div>
             </div>

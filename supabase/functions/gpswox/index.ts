@@ -528,16 +528,66 @@ serve(async (req) => {
       }
     }
 
+    // Enrich with GPSwox-native address + today's history stats (distance / top speed)
+    const extras = new Map<string, { address: string | null; distanceToday: number | null; topSpeedToday: number | null }>();
+    await Promise.all(devices.map(async (device) => {
+      const lat = device.lat ?? (device.device_data ? parseFloat(device.device_data.lat) : undefined);
+      const lng = device.lng ?? (device.device_data ? parseFloat(device.device_data.lng) : undefined);
+      const entry = { address: null as string | null, distanceToday: null as number | null, topSpeedToday: null as number | null };
+      const tryFetch = async (url: string) => {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 8000);
+        try {
+          const r = await fetch(url, { headers: { Accept: 'application/json' }, signal: ctrl.signal });
+          return await r.text();
+        } catch { return null; } finally { clearTimeout(t); }
+      };
+      const num = (v: unknown): number | null => {
+        if (typeof v === 'number') return v;
+        if (typeof v !== 'string') return null;
+        const m = v.replace(/\s/g, '').replace(',', '.').match(/-?\d+(\.\d+)?/);
+        return m ? parseFloat(m[0]) : null;
+      };
+      // 1) Address exactly as GPSwox shows it
+      if (lat && lng) {
+        const txt = await tryFetch(`${apiUrl}/geo_address?lat=${lat}&lon=${lng}&user_api_hash=${apiHash}`);
+        if (txt) {
+          let addr: string | null = null;
+          try {
+            const j = JSON.parse(txt);
+            addr = typeof j === 'string' ? j : (j?.data || j?.address || j?.location || null);
+          } catch { addr = txt.replace(/^"|"$/g, ''); }
+          if (typeof addr === 'string' && addr.trim() && !addr.includes('<html')) entry.address = addr.trim();
+        }
+      }
+      // 2) Today's history summary
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Casablanca' }).format(new Date());
+      const hist = await tryFetch(`${apiUrl}/get_history?device_id=${device.id}&from_date=${today}&from_time=00:00&to_date=${today}&to_time=23:59&user_api_hash=${apiHash}`);
+      if (hist) {
+        try {
+          const h = JSON.parse(hist);
+          entry.distanceToday = num(h?.distance_sum);
+          entry.topSpeedToday = num(h?.top_speed);
+        } catch { /* ignore */ }
+      }
+      extras.set(String(device.id), entry);
+    }));
+
     // Transform to our vehicle format
     const vehicles = devices.map((device) => {
+      const extra = extras.get(String(device.id));
       // Handle both new format (direct lat/lng) and legacy format (device_data object)
       const hasDirectPosition = device.lat !== undefined && device.lng !== undefined;
       const hasLegacyPosition = device.device_data !== undefined;
       
+      // Extract address if provided by GPSwox
+      const rawAddress = extra?.address || (device as any).address || (device as any).street || (device as any).location || (device.device_data as any)?.address || null;
+
       const position = hasDirectPosition ? {
         lat: device.lat || 0,
         lng: device.lng || 0,
-        city: `${device.lat}, ${device.lng}`,
+        city: rawAddress || `${device.lat}, ${device.lng}`,
+        address: rawAddress || undefined,
         speed: device.speed || 0,
         altitude: device.altitude || 0,
         course: device.course || 0,
@@ -545,7 +595,8 @@ serve(async (req) => {
       } : hasLegacyPosition ? {
         lat: parseFloat(device.device_data!.lat) || 0,
         lng: parseFloat(device.device_data!.lng) || 0,
-        city: `${device.device_data!.lat}, ${device.device_data!.lng}`,
+        city: rawAddress || `${device.device_data!.lat}, ${device.device_data!.lng}`,
+        address: rawAddress || undefined,
         speed: parseFloat(device.device_data!.speed) || 0,
         altitude: parseFloat(device.device_data!.altitude) || 0,
         course: parseFloat(device.device_data!.course) || 0,
@@ -603,7 +654,8 @@ serve(async (req) => {
       const finalFuelQuantity = device.fuel_quantity ? parseFloat(device.fuel_quantity) : fuelFromSensor;
       
       // Use odometer from sensor if direct odometer is not available
-      const finalOdometer = device.odometer || odometerFromSensor || 0;
+      const anyDev = device as any;
+      const finalOdometer = Number(device.odometer || odometerFromSensor || anyDev.total_distance || anyDev.device_data?.total_distance || anyDev.device_data?.traccar?.total_distance || 0) || 0;
       
       // Find driver for this device - check multiple sources
       let driverDetails = device.current_driver || (device as any).driver_data || null;
@@ -652,7 +704,8 @@ serve(async (req) => {
         battery: batteryLevel,
         network: networkLevel,
         protocol: device.protocol || null,
-        distanceToday: device.distance_today || null,
+        distanceToday: extra?.distanceToday ?? device.distance_today ?? null,
+        topSpeedToday: extra?.topSpeedToday ?? (anyDev.top_speed ? Number(anyDev.top_speed) || null : null),
         distanceWeek: device.distance_week || null,
         distanceMonth: device.distance_month || null,
         sensors: device.sensors || null,

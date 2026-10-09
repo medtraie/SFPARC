@@ -14,6 +14,7 @@ export interface GPSwoxVehicle {
     lat: number;
     lng: number;
     city: string;
+    address?: string;
     speed: number;
     altitude: number;
     course: number;
@@ -37,6 +38,7 @@ export interface GPSwoxVehicle {
   network: number | null;
   protocol: string | null;
   distanceToday: number | null;
+  topSpeedToday?: number | null;
   distanceWeek: number | null;
   distanceMonth: number | null;
   sensors: Array<{

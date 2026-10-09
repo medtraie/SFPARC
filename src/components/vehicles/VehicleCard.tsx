@@ -1,6 +1,26 @@
+import { useMemo, useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
-import { MapPin, MoreHorizontal, Gauge, User, Fuel, Battery, Truck, Car, Bus } from 'lucide-react';
+import {
+  MapPin,
+  MoreHorizontal,
+  Gauge,
+  User,
+  Fuel,
+  Battery,
+  Truck,
+  Car,
+  Bus,
+  Navigation,
+  TrendingUp,
+  Activity,
+  Milestone,
+  Copy,
+  Check,
+  ExternalLink,
+  ShieldAlert,
+  Zap,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -8,25 +28,28 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { GPSwoxVehicle } from '@/hooks/useGPSwoxVehicles';
+import { VehicleReport } from '@/hooks/useGPSwoxReports';
+import { useVehicleAddress } from '@/hooks/useVehicleAddress';
+import {
+  extractVehicleOdometer,
+  extractVehicleDistanceToday,
+  extractVehicleMaxSpeed,
+} from '@/lib/gpswox-sensors';
 
 interface VehicleCardProps {
   vehicle: GPSwoxVehicle;
+  report?: VehicleReport | null;
+  highestOverspeed?: number;
   compact?: boolean;
   onDetails?: (vehicle: GPSwoxVehicle) => void;
 }
-
-const statusClasses = {
-  active: 'status-badge status-active',
-  inactive: 'status-badge status-inactive',
-  maintenance: 'status-badge status-warning',
-};
-
-const statusLabels = {
-  active: 'Actif',
-  inactive: 'Inactif',
-  maintenance: 'Maintenance',
-};
 
 const BATTERY_MAINTENANCE_THRESHOLD_V = 9;
 
@@ -34,32 +57,30 @@ const BATTERY_MAINTENANCE_THRESHOLD_V = 9;
 function getVehicleIcon(name: string) {
   const lowerName = name.toLowerCase();
   if (lowerName.includes('bus')) return Bus;
-  if (lowerName.includes('camion') || lowerName.includes('truck')) return Truck;
-  if (lowerName.includes('fourgon') || lowerName.includes('van')) return Truck;
+  if (lowerName.includes('camion') || lowerName.includes('truck') || lowerName.includes('remorque')) return Truck;
+  if (lowerName.includes('fourgon') || lowerName.includes('van') || lowerName.includes('utilitaire')) return Truck;
   return Car;
 }
 
-// Format time ago
-function formatTimeAgo(timestamp: string | undefined): string {
-  if (!timestamp) return 'Inconnu';
-  
-  const now = new Date();
-  const time = new Date(timestamp);
-  const diffMs = now.getTime() - time.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
-  
-  if (diffMins < 1) return 'À l\'instant';
-  if (diffMins < 60) return `Il y a ${diffMins}m`;
-  
-  const diffHours = Math.floor(diffMins / 60);
-  if (diffHours < 24) return `Il y a ${diffHours}h`;
-  
-  const diffDays = Math.floor(diffHours / 24);
-  return `Il y a ${diffDays}j`;
+// Clean vehicle title without "GPS Device"
+function getCleanVehicleModel(brand?: string, model?: string, plate?: string) {
+  const cleanBrand = brand && brand.toLowerCase() !== 'gps device' ? brand : '';
+  const cleanModel = model && model.toLowerCase() !== 'gps device' && model !== plate ? model : '';
+  const combined = [cleanBrand, cleanModel].filter(Boolean).join(' ');
+  if (combined) return combined;
+  return 'Flotte SFTM';
 }
 
-export function VehicleCard({ vehicle, compact = false, onDetails }: VehicleCardProps) {
+export function VehicleCard({
+  vehicle,
+  report,
+  highestOverspeed = 0,
+  compact = false,
+  onDetails,
+}: VehicleCardProps) {
   const navigate = useNavigate();
+  const [copied, setCopied] = useState(false);
+
   const speed = vehicle.lastPosition?.speed || 0;
   const fuel = vehicle.fuelQuantity;
   const battery = vehicle.battery;
@@ -67,210 +88,481 @@ export function VehicleCard({ vehicle, compact = false, onDetails }: VehicleCard
   const batteryIsLow = batteryVolts !== null && batteryVolts < BATTERY_MAINTENANCE_THRESHOLD_V;
   const effectiveStatus =
     vehicle.status === 'maintenance' && !batteryIsLow ? 'active' : vehicle.status;
-  const isMoving = speed > 0;
+  const isMoving = speed > 0 && vehicle.online === 'online';
 
+  // 1. Real Odometer (Kilométrage)
+  const realOdometer = useMemo(() => {
+    return extractVehicleOdometer(vehicle, report);
+  }, [vehicle, report]);
+
+  // 2. Real Daily Distance (Distance Jour)
+  const realDistanceToday = useMemo(() => {
+    return extractVehicleDistanceToday(vehicle, report);
+  }, [vehicle, report]);
+
+  // 3. Real Daily Max Speed (Highest recorded today)
+  const [maxSpeed, setMaxSpeed] = useState<number>(() => {
+    return extractVehicleMaxSpeed(vehicle, report, highestOverspeed);
+  });
+
+  useEffect(() => {
+    const computed = extractVehicleMaxSpeed(vehicle, report, highestOverspeed);
+    if (computed > maxSpeed) {
+      setMaxSpeed(computed);
+    }
+  }, [speed, vehicle, report, highestOverspeed, maxSpeed]);
+
+  // Reverse geocoded real address
+  const { address, isLoading: isAddressLoading } = useVehicleAddress(
+    vehicle.lastPosition?.lat,
+    vehicle.lastPosition?.lng,
+    vehicle.lastPosition?.address || vehicle.lastPosition?.city
+  );
+
+  const handleCopyAddress = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (address) {
+      navigator.clipboard.writeText(address);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const VehicleIcon = getVehicleIcon(`${vehicle.plate} ${vehicle.brand} ${vehicle.model}`);
+  const modelText = getCleanVehicleModel(vehicle.brand, vehicle.model, vehicle.plate);
+
+  // Digital speedometer HUD theme & color dynamics based on vehicle state
+  const speedTheme = useMemo(() => {
+    if (vehicle.online === 'offline') {
+      return {
+        bg: 'bg-[#0B1020]/90 border-slate-800/80',
+        text: 'text-slate-400',
+        glow: '',
+        badgeBg: 'bg-slate-800/60 text-slate-400 border-slate-700/50',
+        label: 'Hors ligne',
+        barColor: 'bg-slate-700',
+        accentRing: 'border-slate-800',
+      };
+    }
+    if (speed === 0 || !isMoving) {
+      return {
+        bg: 'bg-[#0E1726]/90 border-slate-700/60 shadow-[inset_1px_1px_4px_rgba(0,0,0,0.6)]',
+        text: 'text-slate-300',
+        glow: '',
+        badgeBg: 'bg-slate-800/70 text-slate-300 border-slate-700/60',
+        label: "À l'arrêt",
+        barColor: 'bg-slate-600',
+        accentRing: 'border-slate-700',
+      };
+    }
+    if (speed > 90) {
+      return {
+        bg: 'bg-rose-950/40 border-rose-500/50 shadow-[0_0_25px_rgba(244,63,94,0.35),inset_0_0_15px_rgba(244,63,94,0.15)] animate-pulse',
+        text: 'text-rose-400',
+        glow: 'shadow-[0_0_14px_rgba(244,63,94,0.6)]',
+        badgeBg: 'bg-rose-500/20 text-rose-400 border-rose-500/40',
+        label: 'Excès de vitesse',
+        barColor: 'bg-gradient-to-r from-amber-400 to-rose-500',
+        accentRing: 'border-rose-500/50',
+      };
+    }
+    if (speed > 60) {
+      return {
+        bg: 'bg-sky-950/35 border-sky-400/50 shadow-[0_0_20px_rgba(56,189,248,0.25),inset_0_0_12px_rgba(56,189,248,0.12)]',
+        text: 'text-sky-300',
+        glow: 'shadow-[0_0_12px_rgba(56,189,248,0.5)]',
+        badgeBg: 'bg-sky-500/20 text-sky-300 border-sky-400/40',
+        label: 'Croisière rapide',
+        barColor: 'bg-gradient-to-r from-cyan-400 to-sky-400',
+        accentRing: 'border-sky-400/50',
+      };
+    }
+    // Normal cruising (1 - 60 km/h)
+    return {
+      bg: 'bg-cyan-950/35 border-cyan-400/50 shadow-[0_0_20px_rgba(85,214,232,0.25),inset_0_0_12px_rgba(85,214,232,0.12)]',
+      text: 'text-cyan-300',
+      glow: 'shadow-[0_0_12px_rgba(85,214,232,0.5)]',
+      badgeBg: 'bg-cyan-500/20 text-cyan-300 border-cyan-400/40',
+      label: 'En mouvement',
+      barColor: 'bg-gradient-to-r from-emerald-400 to-cyan-400',
+      accentRing: 'border-cyan-400/50',
+    };
+  }, [speed, isMoving, vehicle.online]);
+
+  const speedPercentage = Math.min(Math.max((speed / 130) * 100, 0), 100);
+
+  // ----------------------------------------------------
+  // COMPACT MODE (LIST VIEW)
+  // ----------------------------------------------------
   if (compact) {
-    const VehicleIcon = getVehicleIcon(`${vehicle.plate} ${vehicle.brand} ${vehicle.model}`);
     return (
-      <div className="flex items-center gap-3 p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors">
-        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary via-info to-success flex items-center justify-center text-white">
+      <div className="flex items-center gap-4 p-3.5 rounded-2xl border border-white/[0.08] bg-[#121A2B] hover:bg-[#162136] hover:border-cyan-500/30 transition-all duration-300 shadow-[6px_6px_14px_rgba(3,7,18,0.6)]">
+        <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-cyan-400/20 via-sky-500/15 to-blue-600/20 border border-cyan-400/30 flex items-center justify-center text-cyan-300 shadow-[0_0_12px_rgba(85,214,232,0.2)]">
           <VehicleIcon className="w-5 h-5" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="font-medium text-sm">{vehicle.plate}</p>
-          <p className="text-xs text-muted-foreground truncate">
-            {vehicle.brand} {vehicle.model}
+          <div className="flex items-center gap-2">
+            <p className="font-extrabold text-sm text-white tracking-wide">{vehicle.plate}</p>
+            <span className="text-[11px] text-slate-400 font-medium truncate">{modelText}</span>
+          </div>
+          <p className="text-xs text-slate-400 truncate flex items-center gap-1.5 mt-0.5">
+            <MapPin className="w-3 h-3 text-cyan-400 flex-shrink-0" />
+            <span className="truncate">{address}</span>
           </p>
         </div>
+
+        {/* Compact Digital Speed */}
+        <div className={cn('px-2.5 py-1 rounded-xl border flex items-center gap-1.5', speedTheme.bg)}>
+          <span className={cn('font-mono font-black text-sm', speedTheme.text)}>
+            {Math.round(speed)}
+          </span>
+          <span className="text-[9px] font-bold text-slate-400 uppercase">km/h</span>
+        </div>
+
         <div className="flex items-center gap-2">
-          <span className={statusClasses[effectiveStatus]}>
-            {statusLabels[effectiveStatus]}
-          </span>
           <span className={cn(
-            'text-[10px] font-medium px-2 py-1 rounded-full',
-            vehicle.online === 'online' ? 'bg-success/10 text-success' : 
-            vehicle.online === 'ack' ? 'bg-warning/10 text-warning' :
-            'bg-muted text-muted-foreground'
+            'text-[10px] font-bold px-2.5 py-0.5 rounded-full border',
+            vehicle.online === 'online' ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' :
+            vehicle.online === 'ack' ? 'bg-amber-500/15 text-amber-400 border-amber-500/30' :
+            'bg-slate-800 text-slate-400 border-slate-700'
           )}>
-            {vehicle.online === 'online' ? 'Online' : vehicle.online === 'ack' ? 'Ack' : 'Offline'}
+            {vehicle.online === 'online' ? 'En ligne' : vehicle.online === 'ack' ? 'En attente' : 'Hors ligne'}
           </span>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 px-2 text-cyan-400 hover:text-cyan-300 hover:bg-white/[0.05]"
+            onClick={() => onDetails ? onDetails(vehicle) : navigate('/reports', { state: { vehicleId: String(vehicle.id), plate: vehicle.plate, tab: 'summary' } })}
+          >
+            Détails
+          </Button>
         </div>
       </div>
     );
   }
 
-  const VehicleIcon = getVehicleIcon(`${vehicle.plate} ${vehicle.brand} ${vehicle.model}`);
+  // ----------------------------------------------------
+  // FULL 2026 LUXURY NEUMORPHIC CARD
+  // ----------------------------------------------------
   return (
-    <div className="bg-card border border-border rounded-xl p-4 hover:shadow-lg hover:shadow-primary/5 transition-all animate-fade-in">
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary via-info to-success flex items-center justify-center text-white">
-            <VehicleIcon className="w-6 h-6" />
+    <div className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-[#121A2B] p-5 shadow-[8px_8px_22px_rgba(3,7,18,0.7),-4px_-4px_14px_rgba(255,255,255,0.02)] hover:shadow-[14px_14px_32px_rgba(3,7,18,0.85),-6px_-6px_20px_rgba(85,214,232,0.08)] hover:border-cyan-500/30 hover:-translate-y-1 transition-all duration-300 group flex flex-col justify-between">
+      {/* Ambient Cyber Light Rim */}
+      <div className="pointer-events-none absolute -top-16 -right-16 w-36 h-36 bg-cyan-500/10 rounded-full blur-3xl group-hover:bg-cyan-500/20 transition-all duration-500" />
+      
+      <div>
+        {/* Top Header Row */}
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div className="flex items-center gap-3 min-w-0">
+            {/* 3D Neumorphic Icon Container */}
+            <div className="relative w-13 h-13 rounded-2xl bg-gradient-to-br from-[#0E1626] to-[#080E1B] p-0.5 shadow-[inset_2px_2px_4px_rgba(255,255,255,0.08),4px_4px_10px_rgba(0,0,0,0.6)] flex items-center justify-center flex-shrink-0 border border-white/[0.06]">
+              <div className="w-full h-full rounded-[14px] bg-gradient-to-br from-cyan-500/20 via-sky-500/10 to-transparent flex items-center justify-center text-cyan-300 group-hover:scale-105 transition-transform duration-300">
+                <VehicleIcon className="w-6 h-6 drop-shadow-[0_0_8px_rgba(85,214,232,0.5)]" />
+              </div>
+              {/* Online Pulse Dot */}
+              <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
+                {vehicle.online === 'online' && (
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                )}
+                <span className={cn(
+                  'relative inline-flex rounded-full h-3.5 w-3.5 border-2 border-[#121A2B]',
+                  vehicle.online === 'online' ? 'bg-emerald-400 shadow-[0_0_8px_#34d399]' :
+                  vehicle.online === 'ack' ? 'bg-amber-400 shadow-[0_0_8px_#fbbf24]' :
+                  'bg-slate-500'
+                )} />
+              </span>
+            </div>
+
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg font-black text-white tracking-wider truncate font-mono">
+                  {vehicle.plate}
+                </h3>
+              </div>
+              {/* Clean Model / Category (NO 'GPS Device') */}
+              <p className="text-xs font-semibold text-slate-400 truncate mt-0.5">
+                {modelText}
+              </p>
+            </div>
           </div>
-          <div>
-            <h3 className="font-semibold text-foreground">{vehicle.plate}</h3>
-            <p className="text-sm text-muted-foreground">
-              {vehicle.brand} {vehicle.model}
+
+          {/* Right Status Badge & Menu */}
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <span className={cn(
+              'text-[11px] font-bold px-2.5 py-1 rounded-xl border tracking-wide uppercase',
+              effectiveStatus === 'active'
+                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30 shadow-[0_0_10px_rgba(52,211,153,0.15)]'
+                : effectiveStatus === 'maintenance'
+                ? 'bg-amber-500/15 text-amber-300 border-amber-500/30 shadow-[0_0_10px_rgba(251,191,36,0.15)]'
+                : 'bg-slate-800 text-slate-400 border-slate-700'
+            )}>
+              {effectiveStatus === 'active' ? 'Actif' : effectiveStatus === 'maintenance' ? 'Maintenance' : 'Inactif'}
+            </span>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl bg-[#0E1626] border border-white/[0.06] text-slate-300 hover:text-cyan-400 hover:bg-white/[0.06]">
+                  <MoreHorizontal className="w-4 h-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="bg-[#0E1626] border-white/10 text-slate-200">
+                <DropdownMenuItem
+                  onClick={() => {
+                    if (onDetails) {
+                      onDetails(vehicle);
+                      return;
+                    }
+                    navigate('/reports', {
+                      state: { vehicleId: String(vehicle.id), plate: vehicle.plate, tab: 'summary' },
+                    });
+                  }}
+                  className="focus:bg-cyan-500/20 focus:text-cyan-300"
+                >
+                  Fiche Détaillée
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() =>
+                    navigate('/live-map', {
+                      state: { vehicleId: String(vehicle.id) },
+                    })
+                  }
+                  className="focus:bg-cyan-500/20 focus:text-cyan-300"
+                >
+                  Voir sur la carte Live
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() =>
+                    navigate('/reports', {
+                      state: { vehicleId: String(vehicle.id), plate: vehicle.plate, tab: 'vehicles' },
+                    })
+                  }
+                  className="focus:bg-cyan-500/20 focus:text-cyan-300"
+                >
+                  Historique des trajets
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+
+        {/* ---------------------------------------------------- */}
+        {/* 2026 DIGITAL SPEEDOMETER HUD (DYNAMIC RESPONSIVE)    */}
+        {/* ---------------------------------------------------- */}
+        <div className={cn(
+          'relative overflow-hidden rounded-2xl border p-4 mb-4 transition-all duration-300',
+          speedTheme.bg
+        )}>
+          <div className="flex items-center justify-between">
+            {/* Speed Readout */}
+            <div className="flex items-baseline gap-2">
+              <span className={cn('text-3xl font-black font-mono tracking-tight', speedTheme.text)}>
+                {Math.round(speed).toString().padStart(2, '0')}
+              </span>
+              <span className="text-xs font-black text-slate-400 uppercase tracking-widest">
+                KM / H
+              </span>
+            </div>
+
+            {/* State Pill Badge */}
+            <div className="flex items-center gap-1.5">
+              <span className={cn('text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border', speedTheme.badgeBg)}>
+                {speedTheme.label}
+              </span>
+            </div>
+          </div>
+
+          {/* Dynamic Speed Progression Bar */}
+          <div className="mt-3">
+            <div className="h-1.5 w-full bg-[#070B16] rounded-full overflow-hidden p-0.5 shadow-inner">
+              <div
+                className={cn('h-full rounded-full transition-all duration-500', speedTheme.barColor)}
+                style={{ width: `${speedPercentage}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Speed Sub-metrics: Vitesse Max */}
+          <div className="mt-2.5 flex items-center justify-between text-[11px] font-semibold text-slate-400 pt-1 border-t border-white/[0.04]">
+            <span className="flex items-center gap-1 text-slate-400">
+              <Gauge className="w-3.5 h-3.5 text-cyan-400" />
+              Compteur Digital
+            </span>
+            <span className="flex items-center gap-1 text-slate-300">
+              <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
+              Vitesse Max : <strong className="text-white font-mono">{Math.round(maxSpeed)} km/h</strong>
+            </span>
+          </div>
+        </div>
+
+        {/* ---------------------------------------------------- */}
+        {/* FULL REAL ADDRESS (ADAPTED, NO 33.560889, -7.601297) */}
+        {/* ---------------------------------------------------- */}
+        <div className="rounded-xl border border-white/[0.06] bg-[#0E1626]/80 p-3 mb-4 shadow-[inset_1px_1px_4px_rgba(0,0,0,0.5)]">
+          <div className="flex items-start gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-cyan-500/15 border border-cyan-400/30 flex items-center justify-center flex-shrink-0 text-cyan-400 mt-0.5 shadow-[0_0_10px_rgba(85,214,232,0.2)]">
+              <MapPin className="w-4 h-4" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-1 mb-0.5">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Adresse en temps réel
+                </span>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={handleCopyAddress}
+                        className="text-[10px] text-slate-400 hover:text-cyan-300 flex items-center gap-1 transition-colors px-1"
+                      >
+                        {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                        <span>{copied ? 'Copié' : 'Copier'}</span>
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent className="bg-[#0B1020] border-white/10 text-xs">
+                      Copier l'adresse complète
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+              <p className={cn(
+                'text-xs font-medium text-slate-200 leading-relaxed break-words',
+                isAddressLoading && 'animate-pulse text-slate-400'
+              )}>
+                {isAddressLoading ? 'Localisation en cours...' : address}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* ---------------------------------------------------- */}
+        {/* STATS ROW: KILOMÉTRAGE & DISTANCE DU JOUR            */}
+        {/* ---------------------------------------------------- */}
+        <div className="grid grid-cols-2 gap-2.5 mb-4">
+          {/* Total Mileage (Odometer) */}
+          <div className="rounded-xl border border-white/[0.06] bg-[#0E1626]/60 p-2.5">
+            <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider flex items-center gap-1">
+              <Milestone className="w-3 h-3 text-sky-400" />
+              Kilométrage
+            </div>
+            <p className="text-sm font-extrabold text-white font-mono mt-1">
+              {Math.round(realOdometer).toLocaleString()} <span className="text-[10px] font-sans text-slate-400">km</span>
+            </p>
+          </div>
+
+          {/* Distance du jour (REQUIRED IN PROMPT) */}
+          <div className="rounded-xl border border-cyan-500/20 bg-cyan-950/20 p-2.5 shadow-[inset_1px_1px_4px_rgba(0,0,0,0.4)]">
+            <div className="text-[10px] font-bold uppercase text-cyan-300 tracking-wider flex items-center gap-1">
+              <Activity className="w-3 h-3 text-cyan-400" />
+              Distance Jour
+            </div>
+            <p className="text-sm font-extrabold text-cyan-300 font-mono mt-1">
+              {realDistanceToday > 0
+                ? (realDistanceToday >= 10 ? Math.round(realDistanceToday).toLocaleString() : realDistanceToday.toFixed(1))
+                : '0'}{' '}
+              <span className="text-[10px] font-sans text-cyan-400/80">km</span>
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <span className={statusClasses[effectiveStatus]}>
-            <span className={cn(
-              'w-1.5 h-1.5 rounded-full',
-              effectiveStatus === 'active' && 'bg-success',
-              effectiveStatus === 'inactive' && 'bg-muted-foreground',
-              effectiveStatus === 'maintenance' && 'bg-warning'
-            )} />
-            {statusLabels[effectiveStatus]}
-          </span>
-          <span className={cn(
-            'text-xs font-medium px-2 py-1 rounded-full',
-            vehicle.online === 'online' ? 'bg-success/10 text-success' : 
-            vehicle.online === 'ack' ? 'bg-warning/10 text-warning' :
-            'bg-muted text-muted-foreground'
-          )}>
-            {vehicle.online === 'online' ? '🟢 En ligne' : 
-             vehicle.online === 'ack' ? '🟡 En attente' : 
-             '⚫ Hors ligne'}
-          </span>
-        </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8">
-              <MoreHorizontal className="w-4 h-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem
-              onClick={() => {
-                if (onDetails) {
-                  onDetails(vehicle);
-                  return;
-                }
-                navigate('/reports', {
-                  state: { vehicleId: String(vehicle.id), plate: vehicle.plate, tab: 'summary' },
-                });
-              }}
-            >
-              Détails
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() =>
-                navigate('/live-map', {
-                  state: { vehicleId: String(vehicle.id) },
-                })
-              }
-            >
-              Voir sur la carte
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() =>
-                navigate('/reports', {
-                  state: { vehicleId: String(vehicle.id), plate: vehicle.plate, tab: 'vehicles' },
-                })
-              }
-            >
-              Historique
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
 
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">
-            {vehicle.mileage.toLocaleString()} km
-          </span>
-          {vehicle.distanceToday !== null && (
-            <span className="text-sm text-muted-foreground">
-              {vehicle.distanceToday.toLocaleString()} km aujourd'hui
-            </span>
-          )}
-        </div>
-
-        {vehicle.lastPosition && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Gauge className="w-4 h-4" />
-            <span>{speed} km/h</span>
-            {isMoving && (
-              <span className="text-xs text-success">En mouvement</span>
-            )}
-          </div>
-        )}
-
+        {/* Assigned Driver (if any) */}
         {vehicle.driver && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <div className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center">
-              <User className="w-3 h-3 text-primary" />
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#0E1626]/50 border border-white/[0.04] mb-4 text-xs">
+            <div className="w-5 h-5 rounded-full bg-cyan-500/20 border border-cyan-400/30 flex items-center justify-center flex-shrink-0 text-cyan-400">
+              <User className="w-3 h-3" />
             </div>
-            <span>{vehicle.driver}</span>
+            <span className="text-slate-400 text-[11px]">Chauffeur :</span>
+            <span className="font-bold text-white truncate">{vehicle.driver}</span>
           </div>
         )}
 
-        {vehicle.lastPosition && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <MapPin className="w-4 h-4" />
-            <span className="truncate">{vehicle.lastPosition.city}</span>
-            {effectiveStatus === 'active' && (
-              <span className="flex items-center gap-1 text-xs text-success ml-auto">
-                <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
-                Live
+        {/* ---------------------------------------------------- */}
+        {/* CYBER GAUGES: CARBURANT & BATTERIE                   */}
+        {/* ---------------------------------------------------- */}
+        <div className="pt-3 border-t border-white/[0.06] space-y-2.5">
+          {/* Fuel Gauge */}
+          <div>
+            <div className="flex items-center justify-between text-xs font-semibold mb-1">
+              <span className="text-slate-400 flex items-center gap-1.5 text-[11px]">
+                <Fuel className="w-3.5 h-3.5 text-cyan-400" />
+                Carburant
               </span>
-            )}
-          </div>
-        )}
-
-        {vehicle.lastPosition?.timestamp && (
-          <div className="text-xs text-muted-foreground pt-1">
-            Dernière MAJ: {formatTimeAgo(vehicle.lastPosition.timestamp)}
-          </div>
-        )}
-      </div>
-
-      <div className="mt-3 pt-3 border-t border-border">
-        <div className="grid grid-cols-2 gap-3">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Fuel className="w-3.5 h-3.5" />
-            <div className="flex-1">
-              <div className="flex items-center justify-between">
-                <span>Carburant</span>
-                <span className={cn(fuel !== null && fuel < 20 && 'text-destructive')}>
-                  {fuel !== null ? `${fuel}%` : '—'}
-                </span>
-              </div>
-              <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                <div
-                  className={cn(
-                    'h-full',
-                    fuel !== null && fuel < 20 ? 'bg-destructive' : 'bg-success'
-                  )}
-                  style={{ width: `${Math.min(fuel ?? 0, 100)}%` }}
-                />
-              </div>
+              <span className={cn('font-mono font-bold text-[11px]', fuel !== null && fuel < 20 ? 'text-rose-400' : 'text-slate-200')}>
+                {fuel !== null ? `${fuel}%` : '—'}
+              </span>
+            </div>
+            <div className="h-1.5 bg-[#070B16] rounded-full overflow-hidden shadow-inner p-0.5">
+              <div
+                className={cn(
+                  'h-full rounded-full transition-all duration-300',
+                  fuel !== null && fuel < 20
+                    ? 'bg-gradient-to-r from-rose-500 to-amber-500 shadow-[0_0_8px_#f43f5e]'
+                    : 'bg-gradient-to-r from-cyan-400 to-emerald-400 shadow-[0_0_8px_#55D6E8]'
+                )}
+                style={{ width: `${Math.min(fuel ?? 0, 100)}%` }}
+              />
             </div>
           </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Battery className="w-3.5 h-3.5" />
-            <div className="flex-1">
-              <div className="flex items-center justify-between">
-                <span>Batterie</span>
-                <span className={cn(batteryIsLow && 'text-destructive')}>
-                  {batteryVolts !== null ? `${batteryVolts.toFixed(2)} V` : '—'}
-                </span>
-              </div>
-              <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                <div
-                  className={cn(
-                    'h-full',
-                    batteryIsLow ? 'bg-destructive' : 'bg-success'
-                  )}
-                  style={{ width: `${batteryVolts !== null ? Math.max(0, Math.min(((batteryVolts - 9) / 5.5) * 100, 100)) : 0}%` }}
-                />
-              </div>
+
+          {/* Battery Gauge */}
+          <div>
+            <div className="flex items-center justify-between text-xs font-semibold mb-1">
+              <span className="text-slate-400 flex items-center gap-1.5 text-[11px]">
+                <Battery className="w-3.5 h-3.5 text-purple-400" />
+                Batterie
+              </span>
+              <span className={cn('font-mono font-bold text-[11px]', batteryIsLow ? 'text-rose-400' : 'text-slate-200')}>
+                {batteryVolts !== null ? `${batteryVolts.toFixed(2)} V` : '—'}
+              </span>
+            </div>
+            <div className="h-1.5 bg-[#070B16] rounded-full overflow-hidden shadow-inner p-0.5">
+              <div
+                className={cn(
+                  'h-full rounded-full transition-all duration-300',
+                  batteryIsLow
+                    ? 'bg-gradient-to-r from-rose-500 to-red-600 shadow-[0_0_8px_#f43f5e]'
+                    : 'bg-gradient-to-r from-purple-400 to-indigo-400 shadow-[0_0_8px_#a855f7]'
+                )}
+                style={{
+                  width: `${batteryVolts !== null ? Math.max(0, Math.min(((batteryVolts - 9) / 5.5) * 100, 100)) : 0}%`,
+                }}
+              />
             </div>
           </div>
         </div>
+      </div>
+
+      {/* ---------------------------------------------------- */}
+      {/* CARD ACTION BUTTONS                                  */}
+      {/* ---------------------------------------------------- */}
+      <div className="mt-4 pt-3 border-t border-white/[0.06] flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          className="flex-1 h-8 text-xs font-bold border-white/10 bg-[#0E1626] text-slate-200 hover:border-cyan-400/50 hover:text-cyan-400 hover:bg-white/[0.04] transition-all"
+          onClick={() =>
+            navigate('/live-map', {
+              state: { vehicleId: String(vehicle.id) },
+            })
+          }
+        >
+          <Navigation className="w-3 h-3 mr-1.5 text-cyan-400" />
+          Carte
+        </Button>
+        <Button
+          size="sm"
+          className="flex-1 h-8 text-xs font-bold bg-gradient-to-r from-cyan-400 to-cyan-500 text-slate-950 shadow-[0_0_12px_rgba(85,214,232,0.35)] hover:shadow-[0_0_18px_rgba(85,214,232,0.55)] hover:scale-[1.02] active:scale-[0.98] transition-all"
+          onClick={() => {
+            if (onDetails) {
+              onDetails(vehicle);
+              return;
+            }
+            navigate('/reports', {
+              state: { vehicleId: String(vehicle.id), plate: vehicle.plate, tab: 'summary' },
+            });
+          }}
+        >
+          <ExternalLink className="w-3 h-3 mr-1.5" />
+          Détails
+        </Button>
       </div>
     </div>
   );
