@@ -244,57 +244,57 @@ export function VehicleCard({
   }
 
   // ----------------------------------------------------
-  // FULL 2026 LUXURY NEUMORPHIC CARD
+  // FULL 2026 LUXURY NEUMORPHIC CARD (COMPACT ULTRA SLEEK)
   // ----------------------------------------------------
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-[#121A2B] p-3 shadow-[8px_8px_22px_rgba(3,7,18,0.7),-4px_-4px_14px_rgba(255,255,255,0.02)] hover:shadow-[14px_14px_32px_rgba(3,7,18,0.85),-6px_-6px_20px_rgba(85,214,232,0.08)] hover:border-cyan-500/30 hover:-translate-y-0.5 transition-all duration-300 group flex flex-col justify-between">
+    <div className="relative overflow-hidden rounded-xl border border-white/[0.08] bg-[#121A2B] p-2.5 shadow-[6px_6px_18px_rgba(3,7,18,0.7),-3px_-3px_10px_rgba(255,255,255,0.02)] hover:shadow-[10px_10px_24px_rgba(3,7,18,0.85),-4px_-4px_14px_rgba(85,214,232,0.08)] hover:border-cyan-500/30 transition-all duration-300 group flex flex-col justify-between">
       {/* Ambient Cyber Light Rim */}
-      <div className="pointer-events-none absolute -top-16 -right-16 w-36 h-36 bg-cyan-500/10 rounded-full blur-3xl group-hover:bg-cyan-500/20 transition-all duration-500" />
+      <div className="pointer-events-none absolute -top-12 -right-12 w-28 h-28 bg-cyan-500/10 rounded-full blur-2xl group-hover:bg-cyan-500/20 transition-all duration-500" />
       
       <div>
         {/* Top Header Row */}
-        <div className="flex items-start justify-between gap-2 mb-2">
-          <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-start justify-between gap-1.5 mb-1.5">
+          <div className="flex items-center gap-2 min-w-0">
             {/* 3D Neumorphic Icon Container */}
-            <div className="relative w-13 h-13 rounded-2xl bg-gradient-to-br from-[#0E1626] to-[#080E1B] p-0.5 shadow-[inset_2px_2px_4px_rgba(255,255,255,0.08),4px_4px_10px_rgba(0,0,0,0.6)] flex items-center justify-center flex-shrink-0 border border-white/[0.06]">
-              <div className="w-full h-full rounded-[14px] bg-gradient-to-br from-cyan-500/20 via-sky-500/10 to-transparent flex items-center justify-center text-cyan-300 group-hover:scale-105 transition-transform duration-300">
-                <VehicleIcon className="w-6 h-6 drop-shadow-[0_0_8px_rgba(85,214,232,0.5)]" />
+            <div className="relative w-9 h-9 rounded-xl bg-gradient-to-br from-[#0E1626] to-[#080E1B] p-0.5 shadow-[inset_1px_1px_3px_rgba(255,255,255,0.08),3px_3px_8px_rgba(0,0,0,0.6)] flex items-center justify-center flex-shrink-0 border border-white/[0.06]">
+              <div className="w-full h-full rounded-[10px] bg-gradient-to-br from-cyan-500/20 via-sky-500/10 to-transparent flex items-center justify-center text-cyan-300 group-hover:scale-105 transition-transform duration-300">
+                <VehicleIcon className="w-4 h-4 drop-shadow-[0_0_6px_rgba(85,214,232,0.5)]" />
               </div>
               {/* Online Pulse Dot */}
-              <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
+              <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
                 {vehicle.online === 'online' && (
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
                 )}
                 <span className={cn(
-                  'relative inline-flex rounded-full h-3.5 w-3.5 border-2 border-[#121A2B]',
-                  vehicle.online === 'online' ? 'bg-emerald-400 shadow-[0_0_8px_#34d399]' :
-                  vehicle.online === 'ack' ? 'bg-amber-400 shadow-[0_0_8px_#fbbf24]' :
+                  'relative inline-flex rounded-full h-2.5 w-2.5 border-2 border-[#121A2B]',
+                  vehicle.online === 'online' ? 'bg-emerald-400 shadow-[0_0_6px_#34d399]' :
+                  vehicle.online === 'ack' ? 'bg-amber-400 shadow-[0_0_6px_#fbbf24]' :
                   'bg-slate-500'
                 )} />
               </span>
             </div>
 
             <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <h3 className="text-lg font-black text-white tracking-wider truncate font-mono">
+              <div className="flex items-center gap-1.5">
+                <h3 className="text-sm font-black text-white tracking-wide truncate font-mono">
                   {vehicle.plate}
                 </h3>
               </div>
               {/* Clean Model / Category (NO 'GPS Device') */}
-              <p className="text-xs font-semibold text-slate-400 truncate mt-0.5">
+              <p className="text-[10px] font-semibold text-slate-400 truncate">
                 {modelText}
               </p>
             </div>
           </div>
 
           {/* Right Status Badge & Menu */}
-          <div className="flex items-center gap-1.5 flex-shrink-0">
+          <div className="flex items-center gap-1 flex-shrink-0">
             <span className={cn(
-              'text-[11px] font-bold px-2.5 py-1 rounded-xl border tracking-wide uppercase',
+              'text-[10px] font-bold px-2 py-0.5 rounded-lg border tracking-wide uppercase',
               effectiveStatus === 'active'
-                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30 shadow-[0_0_10px_rgba(52,211,153,0.15)]'
+                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
                 : effectiveStatus === 'maintenance'
-                ? 'bg-amber-500/15 text-amber-300 border-amber-500/30 shadow-[0_0_10px_rgba(251,191,36,0.15)]'
+                ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
                 : 'bg-slate-800 text-slate-400 border-slate-700'
             )}>
               {effectiveStatus === 'active' ? 'Actif' : effectiveStatus === 'maintenance' ? 'Maintenance' : 'Inactif'}
@@ -302,8 +302,8 @@ export function VehicleCard({
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl bg-[#0E1626] border border-white/[0.06] text-slate-300 hover:text-cyan-400 hover:bg-white/[0.06]">
-                  <MoreHorizontal className="w-4 h-4" />
+                <Button variant="ghost" size="icon" className="h-6 w-6 rounded-lg bg-[#0E1626] border border-white/[0.06] text-slate-300 hover:text-cyan-400 hover:bg-white/[0.06]">
+                  <MoreHorizontal className="w-3.5 h-3.5" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="bg-[#0E1626] border-white/10 text-slate-200">
@@ -317,7 +317,7 @@ export function VehicleCard({
                       state: { vehicleId: String(vehicle.id), plate: vehicle.plate, tab: 'summary' },
                     });
                   }}
-                  className="focus:bg-cyan-500/20 focus:text-cyan-300"
+                  className="focus:bg-cyan-500/20 focus:text-cyan-300 text-xs"
                 >
                   Fiche Détaillée
                 </DropdownMenuItem>
@@ -327,7 +327,7 @@ export function VehicleCard({
                       state: { vehicleId: String(vehicle.id) },
                     })
                   }
-                  className="focus:bg-cyan-500/20 focus:text-cyan-300"
+                  className="focus:bg-cyan-500/20 focus:text-cyan-300 text-xs"
                 >
                   Voir sur la carte Live
                 </DropdownMenuItem>
@@ -337,7 +337,7 @@ export function VehicleCard({
                       state: { vehicleId: String(vehicle.id), plate: vehicle.plate, tab: 'vehicles' },
                     })
                   }
-                  className="focus:bg-cyan-500/20 focus:text-cyan-300"
+                  className="focus:bg-cyan-500/20 focus:text-cyan-300 text-xs"
                 >
                   Historique des trajets
                 </DropdownMenuItem>
@@ -347,34 +347,34 @@ export function VehicleCard({
         </div>
 
         {/* ---------------------------------------------------- */}
-        {/* 2026 DIGITAL SPEEDOMETER HUD (DYNAMIC RESPONSIVE)    */}
+        {/* 2026 DIGITAL SPEEDOMETER HUD (DYNAMIC COMPACT)       */}
         {/* ---------------------------------------------------- */}
         <div className={cn(
-          'relative overflow-hidden rounded-xl border px-3 py-2 mb-2 transition-all duration-300',
+          'relative overflow-hidden rounded-xl border px-2.5 py-1.5 mb-1.5 transition-all duration-300',
           speedTheme.bg
         )}>
           <div className="flex items-center justify-between">
             {/* Speed Readout */}
-            <div className="flex items-baseline gap-2">
-              <span className={cn('text-2xl font-black font-mono tracking-tight', speedTheme.text)}>
+            <div className="flex items-baseline gap-1.5">
+              <span className={cn('text-xl font-black font-mono tracking-tight', speedTheme.text)}>
                 {Math.round(speed).toString().padStart(2, '0')}
               </span>
-              <span className="text-xs font-black text-slate-400 uppercase tracking-widest">
-                KM / H
+              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                KM/H
               </span>
             </div>
 
             {/* State Pill Badge */}
-            <div className="flex items-center gap-1.5">
-              <span className={cn('text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border', speedTheme.badgeBg)}>
+            <div className="flex items-center gap-1">
+              <span className={cn('text-[9px] font-extrabold px-2 py-0.5 rounded-full border', speedTheme.badgeBg)}>
                 {speedTheme.label}
               </span>
             </div>
           </div>
 
           {/* Dynamic Speed Progression Bar */}
-          <div className="mt-1.5">
-            <div className="h-1.5 w-full bg-[#070B16] rounded-full overflow-hidden p-0.5 shadow-inner">
+          <div className="mt-1">
+            <div className="h-1 w-full bg-[#070B16] rounded-full overflow-hidden p-0.5 shadow-inner">
               <div
                 className={cn('h-full rounded-full transition-all duration-500', speedTheme.barColor)}
                 style={{ width: `${speedPercentage}%` }}
@@ -383,43 +383,43 @@ export function VehicleCard({
           </div>
 
           {/* Speed Sub-metrics: Vitesse Max */}
-          <div className="mt-2.5 flex items-center justify-between text-[11px] font-semibold text-slate-400 pt-1 border-t border-white/[0.04]">
+          <div className="mt-1 flex items-center justify-between text-[10px] font-semibold text-slate-400 pt-1 border-t border-white/[0.04]">
             <span className="flex items-center gap-1 text-slate-400">
-              <Gauge className="w-3.5 h-3.5 text-cyan-400" />
+              <Gauge className="w-3 h-3 text-cyan-400" />
               Compteur Digital
             </span>
             <span className="flex items-center gap-1 text-slate-300">
-              <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
+              <TrendingUp className="w-3 h-3 text-amber-400" />
               Vitesse Max : <strong className="text-white font-mono">{Math.round(maxSpeed)} km/h</strong>
             </span>
           </div>
         </div>
 
         {/* ---------------------------------------------------- */}
-        {/* FULL REAL ADDRESS (COLLAPSIBLE)                      */}
+        {/* FULL REAL ADDRESS (COLLAPSIBLE SLEEK DRAWER)         */}
         {/* ---------------------------------------------------- */}
-        <div className="rounded-xl border border-white/[0.06] bg-[#0E1626]/80 px-2.5 py-1.5 mb-2 shadow-[inset_1px_1px_4px_rgba(0,0,0,0.5)]">
+        <div className="rounded-lg border border-white/[0.06] bg-[#0E1626]/80 px-2 py-1 mb-1.5 shadow-[inset_1px_1px_3px_rgba(0,0,0,0.5)]">
           <div className="flex items-center justify-between gap-1">
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); setAddressOpen((o) => !o); }}
-              className="flex items-center gap-1.5 flex-1 min-w-0 text-left"
+              className="flex items-center gap-1.5 flex-1 min-w-0 text-left py-0.5 hover:text-cyan-300 transition-colors"
               aria-expanded={addressOpen}
             >
-              <MapPin className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
+              <MapPin className="w-3 h-3 text-cyan-400 flex-shrink-0" />
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 truncate">
                 Adresse en temps réel
               </span>
-              <ChevronDown className={cn('w-3.5 h-3.5 text-cyan-400 transition-transform duration-300', addressOpen && 'rotate-180')} />
+              <ChevronDown className={cn('w-3 h-3 text-cyan-400 transition-transform duration-300 flex-shrink-0', addressOpen && 'rotate-180')} />
             </button>
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
                     onClick={handleCopyAddress}
-                    className="text-[10px] text-slate-400 hover:text-cyan-300 flex items-center gap-1 transition-colors px-1"
+                    className="text-[9px] text-slate-400 hover:text-cyan-300 flex items-center gap-0.5 transition-colors px-1"
                   >
-                    {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    {copied ? <Check className="w-2.5 h-2.5 text-emerald-400" /> : <Copy className="w-2.5 h-2.5" />}
                     <span>{copied ? 'Copié' : 'Copier'}</span>
                   </button>
                 </TooltipTrigger>
@@ -429,10 +429,10 @@ export function VehicleCard({
               </Tooltip>
             </TooltipProvider>
           </div>
-          <div className={cn('grid transition-all duration-300 ease-in-out', addressOpen ? 'grid-rows-[1fr] mt-1.5' : 'grid-rows-[0fr]')}>
+          <div className={cn('grid transition-all duration-300 ease-in-out', addressOpen ? 'grid-rows-[1fr] mt-1 pt-1 border-t border-white/[0.04]' : 'grid-rows-[0fr]')}>
             <div className="overflow-hidden">
               <p className={cn(
-                'text-xs font-medium text-slate-200 leading-snug break-words',
+                'text-[11px] font-medium text-slate-200 leading-snug break-words',
                 isAddressLoading && 'animate-pulse text-slate-400'
               )}>
                 {isAddressLoading ? 'Localisation en cours...' : address}
@@ -444,66 +444,66 @@ export function VehicleCard({
         {/* ---------------------------------------------------- */}
         {/* STATS ROW: KILOMÉTRAGE & DISTANCE DU JOUR            */}
         {/* ---------------------------------------------------- */}
-        <div className="grid grid-cols-2 gap-2 mb-2">
+        <div className="grid grid-cols-2 gap-1.5 mb-1.5">
           {/* Total Mileage (Odometer) */}
-          <div className="rounded-xl border border-white/[0.06] bg-[#0E1626]/60 p-2.5">
-            <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider flex items-center gap-1">
-              <Milestone className="w-3 h-3 text-sky-400" />
+          <div className="rounded-lg border border-white/[0.06] bg-[#0E1626]/60 p-1.5 px-2">
+            <div className="text-[9px] font-bold uppercase text-slate-400 tracking-wider flex items-center gap-1">
+              <Milestone className="w-2.5 h-2.5 text-sky-400" />
               Kilométrage
             </div>
-            <p className="text-sm font-extrabold text-white font-mono mt-1">
-              {Math.round(realOdometer).toLocaleString()} <span className="text-[10px] font-sans text-slate-400">km</span>
+            <p className="text-xs font-black text-white font-mono mt-0.5">
+              {Math.round(realOdometer).toLocaleString()} <span className="text-[9px] font-sans text-slate-400">km</span>
             </p>
           </div>
 
           {/* Distance du jour (REQUIRED IN PROMPT) */}
-          <div className="rounded-xl border border-cyan-500/20 bg-cyan-950/20 p-2.5 shadow-[inset_1px_1px_4px_rgba(0,0,0,0.4)]">
-            <div className="text-[10px] font-bold uppercase text-cyan-300 tracking-wider flex items-center gap-1">
-              <Activity className="w-3 h-3 text-cyan-400" />
+          <div className="rounded-lg border border-cyan-500/20 bg-cyan-950/20 p-1.5 px-2 shadow-[inset_1px_1px_3px_rgba(0,0,0,0.4)]">
+            <div className="text-[9px] font-bold uppercase text-cyan-300 tracking-wider flex items-center gap-1">
+              <Activity className="w-2.5 h-2.5 text-cyan-400" />
               Distance Jour
             </div>
-            <p className="text-sm font-extrabold text-cyan-300 font-mono mt-1">
+            <p className="text-xs font-black text-cyan-300 font-mono mt-0.5">
               {realDistanceToday > 0
                 ? (realDistanceToday >= 10 ? Math.round(realDistanceToday).toLocaleString() : realDistanceToday.toFixed(1))
                 : '0'}{' '}
-              <span className="text-[10px] font-sans text-cyan-400/80">km</span>
+              <span className="text-[9px] font-sans text-cyan-400/80">km</span>
             </p>
           </div>
         </div>
 
         {/* Assigned Driver (if any) */}
         {vehicle.driver && (
-          <div className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-[#0E1626]/50 border border-white/[0.04] mb-2 text-xs">
-            <div className="w-5 h-5 rounded-full bg-cyan-500/20 border border-cyan-400/30 flex items-center justify-center flex-shrink-0 text-cyan-400">
-              <User className="w-3 h-3" />
+          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-[#0E1626]/50 border border-white/[0.04] mb-1.5 text-[10px]">
+            <div className="w-4 h-4 rounded-full bg-cyan-500/20 border border-cyan-400/30 flex items-center justify-center flex-shrink-0 text-cyan-400">
+              <User className="w-2.5 h-2.5" />
             </div>
-            <span className="text-slate-400 text-[11px]">Chauffeur :</span>
+            <span className="text-slate-400 text-[10px]">Chauffeur :</span>
             <span className="font-bold text-white truncate">{vehicle.driver}</span>
           </div>
         )}
 
         {/* ---------------------------------------------------- */}
-        {/* CYBER GAUGES: CARBURANT & BATTERIE                   */}
+        {/* CYBER GAUGES: CARBURANT & BATTERIE (SIDE BY SIDE)    */}
         {/* ---------------------------------------------------- */}
-        <div className="pt-2 border-t border-white/[0.06] space-y-1.5">
+        <div className="pt-1.5 border-t border-white/[0.06] grid grid-cols-2 gap-2 mb-1.5">
           {/* Fuel Gauge */}
           <div>
-            <div className="flex items-center justify-between text-xs font-semibold mb-1">
-              <span className="text-slate-400 flex items-center gap-1.5 text-[11px]">
-                <Fuel className="w-3.5 h-3.5 text-cyan-400" />
+            <div className="flex items-center justify-between text-[10px] font-semibold mb-0.5">
+              <span className="text-slate-400 flex items-center gap-1">
+                <Fuel className="w-2.5 h-2.5 text-cyan-400" />
                 Carburant
               </span>
-              <span className={cn('font-mono font-bold text-[11px]', fuel !== null && fuel < 20 ? 'text-rose-400' : 'text-slate-200')}>
+              <span className={cn('font-mono font-bold text-[10px]', fuel !== null && fuel < 20 ? 'text-rose-400' : 'text-slate-200')}>
                 {fuel !== null ? `${fuel}%` : '—'}
               </span>
             </div>
-            <div className="h-1.5 bg-[#070B16] rounded-full overflow-hidden shadow-inner p-0.5">
+            <div className="h-1 bg-[#070B16] rounded-full overflow-hidden shadow-inner">
               <div
                 className={cn(
                   'h-full rounded-full transition-all duration-300',
                   fuel !== null && fuel < 20
-                    ? 'bg-gradient-to-r from-rose-500 to-amber-500 shadow-[0_0_8px_#f43f5e]'
-                    : 'bg-gradient-to-r from-cyan-400 to-emerald-400 shadow-[0_0_8px_#55D6E8]'
+                    ? 'bg-gradient-to-r from-rose-500 to-amber-500 shadow-[0_0_6px_#f43f5e]'
+                    : 'bg-gradient-to-r from-cyan-400 to-emerald-400 shadow-[0_0_6px_#55D6E8]'
                 )}
                 style={{ width: `${Math.min(fuel ?? 0, 100)}%` }}
               />
@@ -512,22 +512,22 @@ export function VehicleCard({
 
           {/* Battery Gauge */}
           <div>
-            <div className="flex items-center justify-between text-xs font-semibold mb-1">
-              <span className="text-slate-400 flex items-center gap-1.5 text-[11px]">
-                <Battery className="w-3.5 h-3.5 text-purple-400" />
+            <div className="flex items-center justify-between text-[10px] font-semibold mb-0.5">
+              <span className="text-slate-400 flex items-center gap-1">
+                <Battery className="w-2.5 h-2.5 text-purple-400" />
                 Batterie
               </span>
-              <span className={cn('font-mono font-bold text-[11px]', batteryIsLow ? 'text-rose-400' : 'text-slate-200')}>
-                {batteryVolts !== null ? `${batteryVolts.toFixed(2)} V` : '—'}
+              <span className={cn('font-mono font-bold text-[10px]', batteryIsLow ? 'text-rose-400' : 'text-slate-200')}>
+                {batteryVolts !== null ? `${batteryVolts.toFixed(1)}V` : '—'}
               </span>
             </div>
-            <div className="h-1.5 bg-[#070B16] rounded-full overflow-hidden shadow-inner p-0.5">
+            <div className="h-1 bg-[#070B16] rounded-full overflow-hidden shadow-inner">
               <div
                 className={cn(
                   'h-full rounded-full transition-all duration-300',
                   batteryIsLow
-                    ? 'bg-gradient-to-r from-rose-500 to-red-600 shadow-[0_0_8px_#f43f5e]'
-                    : 'bg-gradient-to-r from-purple-400 to-indigo-400 shadow-[0_0_8px_#a855f7]'
+                    ? 'bg-gradient-to-r from-rose-500 to-red-600 shadow-[0_0_6px_#f43f5e]'
+                    : 'bg-gradient-to-r from-purple-400 to-indigo-400 shadow-[0_0_6px_#a855f7]'
                 )}
                 style={{
                   width: `${batteryVolts !== null ? Math.max(0, Math.min(((batteryVolts - 9) / 5.5) * 100, 100)) : 0}%`,
@@ -541,23 +541,23 @@ export function VehicleCard({
       {/* ---------------------------------------------------- */}
       {/* CARD ACTION BUTTONS                                  */}
       {/* ---------------------------------------------------- */}
-      <div className="mt-2 pt-2 border-t border-white/[0.06] flex items-center gap-2">
+      <div className="mt-0.5 pt-1.5 border-t border-white/[0.06] flex items-center gap-1.5">
         <Button
           variant="outline"
           size="sm"
-          className="flex-1 h-8 text-xs font-bold border-white/10 bg-[#0E1626] text-slate-200 hover:border-cyan-400/50 hover:text-cyan-400 hover:bg-white/[0.04] transition-all"
+          className="flex-1 h-7 text-[11px] font-bold border-white/10 bg-[#0E1626] text-slate-200 hover:border-cyan-400/50 hover:text-cyan-400 hover:bg-white/[0.04] transition-all px-2"
           onClick={() =>
             navigate('/live-map', {
               state: { vehicleId: String(vehicle.id) },
             })
           }
         >
-          <Navigation className="w-3 h-3 mr-1.5 text-cyan-400" />
+          <Navigation className="w-2.5 h-2.5 mr-1 text-cyan-400" />
           Carte
         </Button>
         <Button
           size="sm"
-          className="flex-1 h-8 text-xs font-bold bg-gradient-to-r from-cyan-400 to-cyan-500 text-slate-950 shadow-[0_0_12px_rgba(85,214,232,0.35)] hover:shadow-[0_0_18px_rgba(85,214,232,0.55)] hover:scale-[1.02] active:scale-[0.98] transition-all"
+          className="flex-1 h-7 text-[11px] font-bold bg-gradient-to-r from-cyan-400 to-cyan-500 text-slate-950 shadow-[0_0_10px_rgba(85,214,232,0.3)] hover:shadow-[0_0_14px_rgba(85,214,232,0.5)] hover:scale-[1.01] active:scale-[0.99] transition-all px-2"
           onClick={() => {
             if (onDetails) {
               onDetails(vehicle);
@@ -568,7 +568,7 @@ export function VehicleCard({
             });
           }}
         >
-          <ExternalLink className="w-3 h-3 mr-1.5" />
+          <ExternalLink className="w-2.5 h-2.5 mr-1" />
           Détails
         </Button>
       </div>

@@ -428,7 +428,7 @@ export default function Vehicles() {
         {!isLoading && !isError && (
           <>
             {viewMode === 'grid' ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-in fade-in duration-300">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 animate-in fade-in duration-300">
                 {sortedVehicles.map((vehicle) => (
                   <VehicleCard
                     key={vehicle.id}
