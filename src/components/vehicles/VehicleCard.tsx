@@ -18,6 +18,7 @@ import {
   Copy,
   Check,
   ExternalLink,
+  ChevronDown,
   ShieldAlert,
   Zap,
 } from 'lucide-react';
@@ -80,6 +81,7 @@ export function VehicleCard({
 }: VehicleCardProps) {
   const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
+  const [addressOpen, setAddressOpen] = useState(false);
 
   const speed = vehicle.lastPosition?.speed || 0;
   const fuel = vehicle.fuelQuantity;
@@ -245,13 +247,13 @@ export function VehicleCard({
   // FULL 2026 LUXURY NEUMORPHIC CARD
   // ----------------------------------------------------
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-[#121A2B] p-5 shadow-[8px_8px_22px_rgba(3,7,18,0.7),-4px_-4px_14px_rgba(255,255,255,0.02)] hover:shadow-[14px_14px_32px_rgba(3,7,18,0.85),-6px_-6px_20px_rgba(85,214,232,0.08)] hover:border-cyan-500/30 hover:-translate-y-1 transition-all duration-300 group flex flex-col justify-between">
+    <div className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-[#121A2B] p-3 shadow-[8px_8px_22px_rgba(3,7,18,0.7),-4px_-4px_14px_rgba(255,255,255,0.02)] hover:shadow-[14px_14px_32px_rgba(3,7,18,0.85),-6px_-6px_20px_rgba(85,214,232,0.08)] hover:border-cyan-500/30 hover:-translate-y-0.5 transition-all duration-300 group flex flex-col justify-between">
       {/* Ambient Cyber Light Rim */}
       <div className="pointer-events-none absolute -top-16 -right-16 w-36 h-36 bg-cyan-500/10 rounded-full blur-3xl group-hover:bg-cyan-500/20 transition-all duration-500" />
       
       <div>
         {/* Top Header Row */}
-        <div className="flex items-start justify-between gap-3 mb-4">
+        <div className="flex items-start justify-between gap-2 mb-2">
           <div className="flex items-center gap-3 min-w-0">
             {/* 3D Neumorphic Icon Container */}
             <div className="relative w-13 h-13 rounded-2xl bg-gradient-to-br from-[#0E1626] to-[#080E1B] p-0.5 shadow-[inset_2px_2px_4px_rgba(255,255,255,0.08),4px_4px_10px_rgba(0,0,0,0.6)] flex items-center justify-center flex-shrink-0 border border-white/[0.06]">
@@ -348,13 +350,13 @@ export function VehicleCard({
         {/* 2026 DIGITAL SPEEDOMETER HUD (DYNAMIC RESPONSIVE)    */}
         {/* ---------------------------------------------------- */}
         <div className={cn(
-          'relative overflow-hidden rounded-2xl border p-4 mb-4 transition-all duration-300',
+          'relative overflow-hidden rounded-xl border px-3 py-2 mb-2 transition-all duration-300',
           speedTheme.bg
         )}>
           <div className="flex items-center justify-between">
             {/* Speed Readout */}
             <div className="flex items-baseline gap-2">
-              <span className={cn('text-3xl font-black font-mono tracking-tight', speedTheme.text)}>
+              <span className={cn('text-2xl font-black font-mono tracking-tight', speedTheme.text)}>
                 {Math.round(speed).toString().padStart(2, '0')}
               </span>
               <span className="text-xs font-black text-slate-400 uppercase tracking-widest">
@@ -371,7 +373,7 @@ export function VehicleCard({
           </div>
 
           {/* Dynamic Speed Progression Bar */}
-          <div className="mt-3">
+          <div className="mt-1.5">
             <div className="h-1.5 w-full bg-[#070B16] rounded-full overflow-hidden p-0.5 shadow-inner">
               <div
                 className={cn('h-full rounded-full transition-all duration-500', speedTheme.barColor)}
@@ -394,37 +396,43 @@ export function VehicleCard({
         </div>
 
         {/* ---------------------------------------------------- */}
-        {/* FULL REAL ADDRESS (ADAPTED, NO 33.560889, -7.601297) */}
+        {/* FULL REAL ADDRESS (COLLAPSIBLE)                      */}
         {/* ---------------------------------------------------- */}
-        <div className="rounded-xl border border-white/[0.06] bg-[#0E1626]/80 p-3 mb-4 shadow-[inset_1px_1px_4px_rgba(0,0,0,0.5)]">
-          <div className="flex items-start gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-cyan-500/15 border border-cyan-400/30 flex items-center justify-center flex-shrink-0 text-cyan-400 mt-0.5 shadow-[0_0_10px_rgba(85,214,232,0.2)]">
-              <MapPin className="w-4 h-4" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between gap-1 mb-0.5">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  Adresse en temps réel
-                </span>
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        onClick={handleCopyAddress}
-                        className="text-[10px] text-slate-400 hover:text-cyan-300 flex items-center gap-1 transition-colors px-1"
-                      >
-                        {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                        <span>{copied ? 'Copié' : 'Copier'}</span>
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent className="bg-[#0B1020] border-white/10 text-xs">
-                      Copier l'adresse complète
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
+        <div className="rounded-xl border border-white/[0.06] bg-[#0E1626]/80 px-2.5 py-1.5 mb-2 shadow-[inset_1px_1px_4px_rgba(0,0,0,0.5)]">
+          <div className="flex items-center justify-between gap-1">
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setAddressOpen((o) => !o); }}
+              className="flex items-center gap-1.5 flex-1 min-w-0 text-left"
+              aria-expanded={addressOpen}
+            >
+              <MapPin className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 truncate">
+                Adresse en temps réel
+              </span>
+              <ChevronDown className={cn('w-3.5 h-3.5 text-cyan-400 transition-transform duration-300', addressOpen && 'rotate-180')} />
+            </button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={handleCopyAddress}
+                    className="text-[10px] text-slate-400 hover:text-cyan-300 flex items-center gap-1 transition-colors px-1"
+                  >
+                    {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    <span>{copied ? 'Copié' : 'Copier'}</span>
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent className="bg-[#0B1020] border-white/10 text-xs">
+                  Copier l'adresse complète
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+          <div className={cn('grid transition-all duration-300 ease-in-out', addressOpen ? 'grid-rows-[1fr] mt-1.5' : 'grid-rows-[0fr]')}>
+            <div className="overflow-hidden">
               <p className={cn(
-                'text-xs font-medium text-slate-200 leading-relaxed break-words',
+                'text-xs font-medium text-slate-200 leading-snug break-words',
                 isAddressLoading && 'animate-pulse text-slate-400'
               )}>
                 {isAddressLoading ? 'Localisation en cours...' : address}
@@ -436,7 +444,7 @@ export function VehicleCard({
         {/* ---------------------------------------------------- */}
         {/* STATS ROW: KILOMÉTRAGE & DISTANCE DU JOUR            */}
         {/* ---------------------------------------------------- */}
-        <div className="grid grid-cols-2 gap-2.5 mb-4">
+        <div className="grid grid-cols-2 gap-2 mb-2">
           {/* Total Mileage (Odometer) */}
           <div className="rounded-xl border border-white/[0.06] bg-[#0E1626]/60 p-2.5">
             <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider flex items-center gap-1">
@@ -465,7 +473,7 @@ export function VehicleCard({
 
         {/* Assigned Driver (if any) */}
         {vehicle.driver && (
-          <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#0E1626]/50 border border-white/[0.04] mb-4 text-xs">
+          <div className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-[#0E1626]/50 border border-white/[0.04] mb-2 text-xs">
             <div className="w-5 h-5 rounded-full bg-cyan-500/20 border border-cyan-400/30 flex items-center justify-center flex-shrink-0 text-cyan-400">
               <User className="w-3 h-3" />
             </div>
@@ -477,7 +485,7 @@ export function VehicleCard({
         {/* ---------------------------------------------------- */}
         {/* CYBER GAUGES: CARBURANT & BATTERIE                   */}
         {/* ---------------------------------------------------- */}
-        <div className="pt-3 border-t border-white/[0.06] space-y-2.5">
+        <div className="pt-2 border-t border-white/[0.06] space-y-1.5">
           {/* Fuel Gauge */}
           <div>
             <div className="flex items-center justify-between text-xs font-semibold mb-1">
@@ -533,7 +541,7 @@ export function VehicleCard({
       {/* ---------------------------------------------------- */}
       {/* CARD ACTION BUTTONS                                  */}
       {/* ---------------------------------------------------- */}
-      <div className="mt-4 pt-3 border-t border-white/[0.06] flex items-center gap-2">
+      <div className="mt-2 pt-2 border-t border-white/[0.06] flex items-center gap-2">
         <Button
           variant="outline"
           size="sm"
