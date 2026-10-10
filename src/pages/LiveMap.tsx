@@ -13,7 +13,6 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { cn } from '@/lib/utils';
 import GPSwoxMap, { MapLayerType, MapVehicle } from '@/components/map/GPSwoxMap';
 import { MapSettingsModal, MarkerDensity } from '@/components/map/MapSettingsModal';
-import { GroupedVehiclesModal } from '@/components/map/GroupedVehiclesModal';
 import { VehicleListDrawer } from '@/components/map/VehicleListDrawer';
 import { useGPSwoxVehicles } from '@/hooks/useGPSwoxVehicles';
 import { useLocation } from 'react-router-dom';
@@ -31,9 +30,6 @@ export default function LiveMap() {
   // Modals & Drawer state
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isClusterModalOpen, setIsClusterModalOpen] = useState(false);
-  const [clusterVehicles, setClusterVehicles] = useState<MapVehicle[]>([]);
-  const [activeClusterLayer, setActiveClusterLayer] = useState<any>(null);
 
   // Map settings state
   const [showGeofences, setShowGeofences] = useState(false);
@@ -103,19 +99,6 @@ export default function LiveMap() {
     setFollowingVehicleId((prev) => (prev === vehicleId ? undefined : vehicleId));
   }, []);
 
-  // Handle cluster click from map
-  const handleClusterClick = useCallback((clusterItems: MapVehicle[], clusterLayer: any) => {
-    setClusterVehicles(clusterItems);
-    setActiveClusterLayer(clusterLayer);
-    setIsClusterModalOpen(true);
-  }, []);
-
-  const handleSeparateCluster = useCallback(() => {
-    if (activeClusterLayer && typeof activeClusterLayer.zoomToBounds === 'function') {
-      activeClusterLayer.zoomToBounds({ padding: [30, 30] });
-    }
-  }, [activeClusterLayer]);
-
   // Current map layer display label
   const layerLabel = useMemo(() => {
     switch (mapLayer) {
@@ -153,7 +136,6 @@ export default function LiveMap() {
           showTraces={showTraces}
           showPoints={showPoints}
           zoomSignal={zoomSignal}
-          onClusterClick={handleClusterClick}
         />
 
         {/* Top-Left: Active Follow Pill */}
@@ -282,7 +264,7 @@ export default function LiveMap() {
           </button>
         </div>
 
-        {/* Center Floating Vehicle List Drawer (Matching User Request) */}
+        {/* Center Floating Vehicle List Drawer */}
         <VehicleListDrawer
           open={isDrawerOpen}
           onClose={() => setIsDrawerOpen(false)}
@@ -294,16 +276,7 @@ export default function LiveMap() {
           fleetTitle="SFTM"
         />
 
-        {/* Grouped Vehicles Modal */}
-        <GroupedVehiclesModal
-          open={isClusterModalOpen}
-          onOpenChange={setIsClusterModalOpen}
-          vehicles={clusterVehicles}
-          onSeparate={handleSeparateCluster}
-          onSelectVehicle={handleVehicleSelect}
-        />
-
-        {/* Map Settings Modal */}
+        {/* Compact Map Settings Modal */}
         <MapSettingsModal
           open={isSettingsOpen}
           onOpenChange={setIsSettingsOpen}

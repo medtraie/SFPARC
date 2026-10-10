@@ -94,7 +94,6 @@ interface GPSwoxMapProps {
   showTraces?: boolean;
   showPoints?: boolean;
   zoomSignal?: { type: 'in' | 'out'; id: number };
-  onClusterClick?: (vehicles: MapVehicle[], clusterLayer: any) => void;
 }
 
 // Store vehicle position history for traceurs
@@ -198,7 +197,6 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
   showTraces = true,
   showPoints = true,
   zoomSignal,
-  onClusterClick,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -214,11 +212,6 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const tileLayersCacheRef = useRef<Map<string, L.TileLayer>>(new Map());
   const activeBaseLayerKeyRef = useRef<string | null>(null);
-
-  const onClusterClickRef = useRef(onClusterClick);
-  useEffect(() => {
-    onClusterClickRef.current = onClusterClick;
-  }, [onClusterClick]);
 
   // Handle external zoom controls
   useEffect(() => {
@@ -266,20 +259,24 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
     mapRef.current = L.map(mapContainerRef.current, {
       center: [31.7917, -7.0926], // Morocco center
       zoom: 6,
-      zoomControl: false, // Custom transparent controls used
+      zoomControl: false,
       fadeAnimation: false,
     });
 
-    setTimeout(() => {
+    const triggerInvalidate = () => {
       mapRef.current?.invalidateSize();
-    }, 120);
+    };
+
+    setTimeout(triggerInvalidate, 50);
+    setTimeout(triggerInvalidate, 200);
+    setTimeout(triggerInvalidate, 500);
 
     resizeObserverRef.current = new ResizeObserver(() => {
       mapRef.current?.invalidateSize();
     });
     resizeObserverRef.current.observe(mapContainerRef.current);
 
-    const initialKey = mapLayer;
+    const initialKey = mapLayer || 'google-streets';
     const initialTileLayer = createTileLayer(initialKey);
     tileLayersCacheRef.current.set(initialKey, initialTileLayer);
     initialTileLayer.addTo(mapRef.current);
@@ -291,8 +288,8 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
       chunkedLoading: true,
       spiderfyOnMaxZoom: true,
       showCoverageOnHover: false,
-      zoomToBoundsOnClick: false, // Allows custom cluster dialog
-      maxClusterRadius: 55,
+      zoomToBoundsOnClick: true, // Click directly zooms and distributes vehicles on the map
+      maxClusterRadius: 80, // Ensures all initial vehicles group into one animated disc
       iconCreateFunction: (cluster) => {
         const childMarkers = cluster.getAllChildMarkers();
         const count = childMarkers.length;
@@ -312,8 +309,8 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
           }
         });
 
-        const diameter = count > 50 ? 56 : count > 15 ? 50 : 44;
-        const radius = diameter / 2 - 3;
+        const diameter = count > 50 ? 58 : count > 10 ? 52 : 46;
+        const radius = diameter / 2 - 3.5;
         const circumference = 2 * Math.PI * radius;
 
         const movingPct = count > 0 ? moving / count : 0;
@@ -324,13 +321,13 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
 
         return L.divIcon({
           html: `
-            <div class="animated-cluster-disc" style="width: ${diameter}px; height: ${diameter}px;">
+            <div class="animated-cluster-disc" style="width: ${diameter}px; height: ${diameter}px;" title="Cliquez pour distribuer les véhicules">
               <div class="cluster-pulse-ring"></div>
               <svg class="cluster-svg-ring" width="${diameter}" height="${diameter}" viewBox="0 0 ${diameter} ${diameter}">
                 <circle cx="${diameter / 2}" cy="${diameter / 2}" r="${radius}" 
-                  stroke="rgba(255,255,255,0.2)" stroke-width="3.5" fill="none" />
+                  stroke="rgba(255,255,255,0.25)" stroke-width="4" fill="none" />
                 <circle cx="${diameter / 2}" cy="${diameter / 2}" r="${radius}" 
-                  stroke="#22c55e" stroke-width="3.5" 
+                  stroke="#22c55e" stroke-width="4" 
                   stroke-dasharray="${strokeMoving} ${circumference}" 
                   stroke-linecap="round" fill="none" 
                   transform="rotate(-90 ${diameter / 2} ${diameter / 2})" />
@@ -338,7 +335,7 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
                   stoppedPct > 0
                     ? `
                   <circle cx="${diameter / 2}" cy="${diameter / 2}" r="${radius}" 
-                    stroke="#f59e0b" stroke-width="3.5" 
+                    stroke="#f59e0b" stroke-width="4" 
                     stroke-dasharray="${strokeStopped} ${circumference}" 
                     stroke-linecap="round" fill="none" 
                     transform="rotate(${movingPct * 360 - 90} ${diameter / 2} ${diameter / 2})" />
@@ -358,21 +355,9 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
       },
     });
 
-    // Listen to cluster click
+    // When clicking cluster, distribute/separate vehicles on the map directly
     clusterGroupRef.current.on('clusterclick', (a: any) => {
-      const childMarkers = a.layer.getAllChildMarkers();
-      const vehiclesInThisCluster = childMarkers
-        .map((m: any) => m.vehicleData)
-        .filter(Boolean);
-
-      if (onClusterClickRef.current) {
-        onClusterClickRef.current(vehiclesInThisCluster, a.layer);
-      }
-    });
-
-    // Listen to cluster double click to zoom in and separate
-    clusterGroupRef.current.on('clusterdblclick', (a: any) => {
-      a.layer.zoomToBounds({ padding: [30, 30] });
+      a.layer.zoomToBounds({ padding: [40, 40] });
     });
 
     if (enableClustering) {
@@ -640,7 +625,7 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
         const bounds = L.latLngBounds(
           vehiclesWithPosition.map((v) => [v.lastPosition!.lat, v.lastPosition!.lng])
         );
-        map.fitBounds(bounds, { padding: [50, 50] });
+        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 6 });
         hasFittedBounds.current = true;
       }
     }
@@ -768,31 +753,6 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
     });
   }, [vehicles, traceurVehicleIds, showTraces]);
 
-  if (isLoading) {
-    return (
-      <div className="absolute inset-0 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm z-30">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-10 h-10 animate-spin text-emerald-400" />
-          <p className="text-slate-300 text-sm font-medium">Chargement des véhicules...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="absolute inset-0 flex items-center justify-center bg-slate-950/80 z-30">
-        <div className="flex flex-col items-center gap-3 text-center p-6 bg-slate-900 border border-rose-500/30 rounded-2xl">
-          <AlertTriangle className="w-10 h-10 text-rose-500" />
-          <p className="text-rose-400 font-bold">Erreur de connexion GPSwox</p>
-          <p className="text-xs text-slate-400 max-w-md">
-            {error.message || 'Impossible de charger les véhicules'}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <>
       <style>{`
@@ -815,16 +775,16 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
         }
         .cluster-pulse-ring {
           position: absolute;
-          inset: -4px;
+          inset: -6px;
           border-radius: 50%;
-          border: 2px solid rgba(34, 197, 94, 0.75);
+          border: 2px solid rgba(34, 197, 94, 0.8);
           animation: clusterPulseAnimation 2s cubic-bezier(0.24, 0, 0.38, 1) infinite;
           pointer-events: none;
         }
         @keyframes clusterPulseAnimation {
-          0% { transform: scale(0.9); opacity: 0.9; }
-          70% { transform: scale(1.35); opacity: 0; }
-          100% { transform: scale(1.4); opacity: 0; }
+          0% { transform: scale(0.92); opacity: 0.95; }
+          70% { transform: scale(1.4); opacity: 0; }
+          100% { transform: scale(1.45); opacity: 0; }
         }
         .cluster-svg-ring {
           position: absolute;
@@ -839,12 +799,12 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
           display: flex;
           align-items: center;
           justify-content: center;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45), inset 0 1px 2px rgba(255, 255, 255, 0.3);
+          box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45), inset 0 1px 2px rgba(255, 255, 255, 0.35);
         }
         .cluster-count-text {
           color: white;
           font-weight: 800;
-          font-size: 13px;
+          font-size: 14px;
           font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
           text-shadow: 0 1px 2px rgba(0,0,0,0.6);
         }
@@ -867,14 +827,40 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
         .leaflet-container {
           width: 100%;
           height: 100%;
+          background: #e5e7eb;
           z-index: 1;
         }
       `}</style>
+
+      {/* Map DOM container ALWAYS preserved */}
       <div
         ref={mapContainerRef}
-        className="absolute inset-0 z-0"
+        className="absolute inset-0 z-0 bg-[#e5e7eb]"
         style={{ width: '100%', height: '100%' }}
       />
+
+      {/* Non-destructive overlay for loading */}
+      {isLoading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-slate-950/30 backdrop-blur-sm z-30 pointer-events-none">
+          <div className="flex flex-col items-center gap-2">
+            <Loader2 className="w-8 h-8 animate-spin text-emerald-400" />
+            <p className="text-slate-200 text-xs font-semibold">Chargement des véhicules...</p>
+          </div>
+        </div>
+      )}
+
+      {/* Error overlay */}
+      {error && (
+        <div className="absolute inset-0 flex items-center justify-center bg-slate-950/70 z-30">
+          <div className="flex flex-col items-center gap-2 text-center p-5 bg-slate-900 border border-rose-500/30 rounded-2xl">
+            <AlertTriangle className="w-8 h-8 text-rose-500" />
+            <p className="text-rose-400 font-bold text-sm">Erreur de connexion GPSwox</p>
+            <p className="text-xs text-slate-400 max-w-xs">
+              {error.message || 'Impossible de charger les véhicules'}
+            </p>
+          </div>
+        </div>
+      )}
     </>
   );
 };
