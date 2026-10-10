@@ -1,12 +1,18 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useCallback } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import 'leaflet.markercluster';
 import { Loader2, AlertTriangle } from 'lucide-react';
+import { MarkerDensity } from './MapSettingsModal';
 
-export type MapLayerType = 'osm' | 'google-streets' | 'google-hybrid' | 'google-satellite';
+export type MapLayerType =
+  | 'osm'
+  | 'google-streets'
+  | 'google-hybrid'
+  | 'google-satellite'
+  | 'google-terrain';
 
 const getTileLayerConfig = (layerType: MapLayerType) => {
   switch (layerType) {
@@ -27,6 +33,13 @@ const getTileLayerConfig = (layerType: MapLayerType) => {
     case 'google-satellite':
       return {
         url: 'https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}&hl=fr&gl=MA',
+        attribution: '&copy; Google Maps',
+        maxZoom: 20,
+        subdomains: ['0', '1', '2', '3'],
+      };
+    case 'google-terrain':
+      return {
+        url: 'https://mt{s}.google.com/vt/lyrs=p&x={x}&y={y}&z={z}&hl=fr&gl=MA',
         attribution: '&copy; Google Maps',
         maxZoom: 20,
         subdomains: ['0', '1', '2', '3'],
@@ -52,7 +65,6 @@ export interface MapVehicle {
   speed?: number;
   lastUpdate?: string;
   fuelQuantity?: number | null;
-  // Additional data
   battery?: number | null;
   network?: number | null;
   distanceToday?: number | null;
@@ -77,17 +89,26 @@ interface GPSwoxMapProps {
   mapLayer?: MapLayerType;
   traceurVehicleIds?: Set<string>;
   resetViewSignal?: number;
+  markerDensity?: MarkerDensity;
+  showGeofences?: boolean;
+  showTraces?: boolean;
+  showPoints?: boolean;
+  zoomSignal?: { type: 'in' | 'out'; id: number };
+  onClusterClick?: (vehicles: MapVehicle[], clusterLayer: any) => void;
 }
 
 // Store vehicle position history for traceurs
 const vehiclePositionHistory = new Map<string, L.LatLng[]>();
-const MAX_TRACEUR_POINTS = 100; // Maximum points to keep in trail
+const MAX_TRACEUR_POINTS = 100;
 const vehicleIconCache = new Map<string, L.DivIcon>();
 
-// Custom vehicle icon based on status and movement
-// Mouvement = Vert, À l'arrêt = Rouge, Hors ligne = Noir
-const createVehicleIcon = (_status: string, isMoving: boolean = false, isOnline: boolean = true) => {
-  const iconKey = `${isOnline ? 'online' : 'offline'}-${isMoving ? 'moving' : 'stopped'}`;
+const createVehicleIcon = (
+  _status: string,
+  isMoving: boolean = false,
+  isOnline: boolean = true,
+  density: MarkerDensity = 'standard'
+) => {
+  const iconKey = `${density}-${isOnline ? 'online' : 'offline'}-${isMoving ? 'moving' : 'stopped'}`;
   const cachedIcon = vehicleIconCache.get(iconKey);
   if (cachedIcon) return cachedIcon;
 
@@ -99,28 +120,44 @@ const createVehicleIcon = (_status: string, isMoving: boolean = false, isOnline:
   } else {
     color = '#ef4444';
   }
-  
+
+  const dims =
+    density === 'compact'
+      ? { width: 26, height: 36, anchorX: 13, anchorY: 36 }
+      : density === 'large'
+      ? { width: 38, height: 52, anchorX: 19, anchorY: 52 }
+      : { width: 32, height: 44, anchorX: 16, anchorY: 44 };
+
   const svgIcon = `
-    <svg width="32" height="44" viewBox="0 0 32 44" xmlns="http://www.w3.org/2000/svg">
+    <svg width="${dims.width}" height="${dims.height}" viewBox="0 0 32 44" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <filter id="shadow-${iconKey}" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000000" flood-opacity="0.4"/>
+        </filter>
+      </defs>
       <path d="M16 0C7.163 0 0 7.163 0 16c0 8.837 16 28 16 28s16-19.163 16-28C32 7.163 24.837 0 16 0z" 
-            fill="${color}"/>
+            fill="${color}" filter="url(#shadow-${iconKey})"/>
       <circle cx="16" cy="14" r="7" fill="white" opacity="0.95"/>
-      <circle cx="16" cy="14" r="5" fill="${color}" opacity="0.25"/>
-      ${isMoving ? `
+      <circle cx="16" cy="14" r="5" fill="${color}" opacity="0.3"/>
+      ${
+        isMoving
+          ? `
         <circle cx="16" cy="14" r="12" fill="none" stroke="${color}" stroke-width="2" opacity="0.6">
           <animate attributeName="r" from="10" to="18" dur="1.2s" repeatCount="indefinite"/>
           <animate attributeName="opacity" from="0.6" to="0" dur="1.2s" repeatCount="indefinite"/>
         </circle>
-      ` : ''}
+      `
+          : ''
+      }
     </svg>
   `;
 
   const icon = L.divIcon({
     html: svgIcon,
     className: 'custom-vehicle-marker',
-    iconSize: [32, 44],
-    iconAnchor: [16, 44],
-    popupAnchor: [0, -44],
+    iconSize: [dims.width, dims.height],
+    iconAnchor: [dims.anchorX, dims.anchorY],
+    popupAnchor: [0, -dims.anchorY],
   });
   vehicleIconCache.set(iconKey, icon);
   return icon;
@@ -132,11 +169,11 @@ const formatTimestamp = (timestamp?: string) => {
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMins = Math.floor(diffMs / 60000);
-  
-  if (diffMins < 1) return 'À l\'instant';
+
+  if (diffMins < 1) return "À l'instant";
   if (diffMins < 60) return `Il y a ${diffMins} min`;
   if (diffMins < 1440) return `Il y a ${Math.floor(diffMins / 60)}h`;
-  
+
   return date.toLocaleString('fr-FR', {
     day: '2-digit',
     month: '2-digit',
@@ -145,17 +182,23 @@ const formatTimestamp = (timestamp?: string) => {
   });
 };
 
-const GPSwoxMap: React.FC<GPSwoxMapProps> = ({ 
-  vehicles, 
-  selectedVehicleId, 
+const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
+  vehicles,
+  selectedVehicleId,
   followingVehicleId,
   onVehicleSelect,
   isLoading,
   error,
   enableClustering = true,
-  mapLayer = 'osm',
+  mapLayer = 'google-streets',
   traceurVehicleIds = new Set(),
   resetViewSignal = 0,
+  markerDensity = 'standard',
+  showGeofences = false,
+  showTraces = true,
+  showPoints = true,
+  zoomSignal,
+  onClusterClick,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -171,6 +214,21 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const tileLayersCacheRef = useRef<Map<string, L.TileLayer>>(new Map());
   const activeBaseLayerKeyRef = useRef<string | null>(null);
+
+  const onClusterClickRef = useRef(onClusterClick);
+  useEffect(() => {
+    onClusterClickRef.current = onClusterClick;
+  }, [onClusterClick]);
+
+  // Handle external zoom controls
+  useEffect(() => {
+    if (!mapRef.current || !zoomSignal) return;
+    if (zoomSignal.type === 'in') {
+      mapRef.current.zoomIn();
+    } else if (zoomSignal.type === 'out') {
+      mapRef.current.zoomOut();
+    }
+  }, [zoomSignal]);
 
   const createTileLayer = useCallback((layerKey: string) => {
     const targetLayer = layerKey === 'fallback-osm' ? 'osm' : (layerKey as MapLayerType);
@@ -201,19 +259,21 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
     return layer;
   }, []);
 
-  // Initialize map - only once
+  // Initialize map
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
     mapRef.current = L.map(mapContainerRef.current, {
       center: [31.7917, -7.0926], // Morocco center
       zoom: 6,
-      zoomControl: true,
+      zoomControl: false, // Custom transparent controls used
       fadeAnimation: false,
     });
+
     setTimeout(() => {
       mapRef.current?.invalidateSize();
     }, 120);
+
     resizeObserverRef.current = new ResizeObserver(() => {
       mapRef.current?.invalidateSize();
     });
@@ -226,33 +286,93 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
     tileLayerRef.current = initialTileLayer;
     activeBaseLayerKeyRef.current = initialKey;
 
-    // Initialize cluster group
+    // Initialize cluster group with animated multi-ring discs
     clusterGroupRef.current = L.markerClusterGroup({
       chunkedLoading: true,
       spiderfyOnMaxZoom: true,
       showCoverageOnHover: false,
-      zoomToBoundsOnClick: true,
-      maxClusterRadius: 50,
+      zoomToBoundsOnClick: false, // Allows custom cluster dialog
+      maxClusterRadius: 55,
       iconCreateFunction: (cluster) => {
-        const count = cluster.getChildCount();
-        let size = 'small';
-        let diameter = 40;
-        
-        if (count > 10) {
-          size = 'medium';
-          diameter = 50;
-        }
-        if (count > 50) {
-          size = 'large';
-          diameter = 60;
-        }
+        const childMarkers = cluster.getAllChildMarkers();
+        const count = childMarkers.length;
+
+        let moving = 0;
+        let stopped = 0;
+        let offline = 0;
+
+        childMarkers.forEach((m: any) => {
+          const v = m.vehicleData as MapVehicle | undefined;
+          if (!v || v.online === 'offline') {
+            offline++;
+          } else if ((v.lastPosition?.speed || 0) > 0) {
+            moving++;
+          } else {
+            stopped++;
+          }
+        });
+
+        const diameter = count > 50 ? 56 : count > 15 ? 50 : 44;
+        const radius = diameter / 2 - 3;
+        const circumference = 2 * Math.PI * radius;
+
+        const movingPct = count > 0 ? moving / count : 0;
+        const stoppedPct = count > 0 ? stopped / count : 0;
+
+        const strokeMoving = circumference * movingPct;
+        const strokeStopped = circumference * stoppedPct;
 
         return L.divIcon({
-          html: `<div class="cluster-icon cluster-${size}">${count}</div>`,
+          html: `
+            <div class="animated-cluster-disc" style="width: ${diameter}px; height: ${diameter}px;">
+              <div class="cluster-pulse-ring"></div>
+              <svg class="cluster-svg-ring" width="${diameter}" height="${diameter}" viewBox="0 0 ${diameter} ${diameter}">
+                <circle cx="${diameter / 2}" cy="${diameter / 2}" r="${radius}" 
+                  stroke="rgba(255,255,255,0.2)" stroke-width="3.5" fill="none" />
+                <circle cx="${diameter / 2}" cy="${diameter / 2}" r="${radius}" 
+                  stroke="#22c55e" stroke-width="3.5" 
+                  stroke-dasharray="${strokeMoving} ${circumference}" 
+                  stroke-linecap="round" fill="none" 
+                  transform="rotate(-90 ${diameter / 2} ${diameter / 2})" />
+                ${
+                  stoppedPct > 0
+                    ? `
+                  <circle cx="${diameter / 2}" cy="${diameter / 2}" r="${radius}" 
+                    stroke="#f59e0b" stroke-width="3.5" 
+                    stroke-dasharray="${strokeStopped} ${circumference}" 
+                    stroke-linecap="round" fill="none" 
+                    transform="rotate(${movingPct * 360 - 90} ${diameter / 2} ${diameter / 2})" />
+                `
+                    : ''
+                }
+              </svg>
+              <div class="cluster-inner-core">
+                <span class="cluster-count-text">${count}</span>
+              </div>
+            </div>
+          `,
           className: 'custom-cluster-marker',
           iconSize: [diameter, diameter],
+          iconAnchor: [diameter / 2, diameter / 2],
         });
       },
+    });
+
+    // Listen to cluster click
+    clusterGroupRef.current.on('clusterclick', (a: any) => {
+      const childMarkers = a.layer.getAllChildMarkers();
+      const vehiclesInThisCluster = childMarkers
+        .map((m: any) => m.vehicleData)
+        .filter(Boolean);
+
+      if (onClusterClickRef.current) {
+        onClusterClickRef.current(vehiclesInThisCluster, a.layer);
+      }
+    });
+
+    // Listen to cluster double click to zoom in and separate
+    clusterGroupRef.current.on('clusterdblclick', (a: any) => {
+      a.layer.zoomToBounds({ padding: [30, 30] });
     });
 
     if (enableClustering) {
@@ -276,7 +396,7 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
     };
   }, [createTileLayer, mapLayer]);
 
-  // Handle layer change - preserve zoom and center
+  // Handle layer change
   useEffect(() => {
     if (!mapRef.current) return;
 
@@ -307,7 +427,6 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
     if (enableClustering) {
       if (!mapRef.current.hasLayer(clusterGroupRef.current)) {
         mapRef.current.addLayer(clusterGroupRef.current);
-        // Move all markers to cluster group
         markersRef.current.forEach((marker) => {
           if (mapRef.current?.hasLayer(marker)) {
             mapRef.current.removeLayer(marker);
@@ -317,7 +436,6 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
       }
     } else {
       if (mapRef.current.hasLayer(clusterGroupRef.current)) {
-        // Move all markers out of cluster group
         markersRef.current.forEach((marker) => {
           clusterGroupRef.current?.removeLayer(marker);
           marker.addTo(mapRef.current!);
@@ -333,7 +451,7 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
 
     const map = mapRef.current;
     const currentMarkers = markersRef.current;
-    const vehicleIds = new Set(vehicles.map(v => v.id));
+    const vehicleIds = new Set(vehicles.map((v) => v.id));
 
     // Remove markers for vehicles that no longer exist
     currentMarkers.forEach((marker, id) => {
@@ -356,21 +474,26 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
       const isMoving = (vehicle.lastPosition.speed || 0) > 0;
       let marker = currentMarkers.get(vehicle.id);
       const isOnline = vehicle.online === 'online' || vehicle.online === 'ack';
-      const iconKey = `${isOnline ? 'online' : 'offline'}-${isMoving ? 'moving' : 'stopped'}`;
-      
+      const iconKey = `${markerDensity}-${isOnline ? 'online' : 'offline'}-${isMoving ? 'moving' : 'stopped'}`;
+
       if (marker) {
+        (marker as any).vehicleData = vehicle;
         const currentLatLng = marker.getLatLng();
-        if (Math.abs(currentLatLng.lat - lat) > 0.000001 || Math.abs(currentLatLng.lng - lng) > 0.000001) {
+        if (
+          Math.abs(currentLatLng.lat - lat) > 0.000001 ||
+          Math.abs(currentLatLng.lng - lng) > 0.000001
+        ) {
           marker.setLatLng([lat, lng]);
         }
         const prevState = markerStateRef.current.get(vehicle.id);
         if (!prevState || prevState.iconKey !== iconKey) {
-          marker.setIcon(createVehicleIcon(vehicle.status, isMoving, isOnline));
+          marker.setIcon(createVehicleIcon(vehicle.status, isMoving, isOnline, markerDensity));
         }
       } else {
         marker = L.marker([lat, lng], {
-          icon: createVehicleIcon(vehicle.status, isMoving, isOnline),
+          icon: createVehicleIcon(vehicle.status, isMoving, isOnline, markerDensity),
         });
+        (marker as any).vehicleData = vehicle;
 
         marker.on('click', () => {
           onVehicleSelect?.(vehicle.id);
@@ -384,39 +507,60 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
         currentMarkers.set(vehicle.id, marker);
       }
 
+      // Visibility based on showPoints
+      if (!showPoints) {
+        marker.setOpacity(0);
+      } else {
+        marker.setOpacity(1);
+      }
+
       const address = vehicle.lastPosition?.city
         ? `${vehicle.lastPosition.city} (${lat.toFixed(5)}, ${lng.toFixed(5)})`
         : `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
 
-      const statusColor = vehicle.status === 'active' ? '#10b981' : 
-                         vehicle.status === 'maintenance' ? '#f59e0b' : '#6b7280';
-      const statusText = vehicle.status === 'active' ? 'Actif' : 
-                        vehicle.status === 'maintenance' ? 'Maintenance' : 'Inactif';
-      
+      const statusColor =
+        vehicle.status === 'active'
+          ? '#10b981'
+          : vehicle.status === 'maintenance'
+          ? '#f59e0b'
+          : '#6b7280';
+      const statusText =
+        vehicle.status === 'active'
+          ? 'Actif'
+          : vehicle.status === 'maintenance'
+          ? 'Maintenance'
+          : 'Inactif';
+
       const speed = vehicle.lastPosition?.speed || 0;
-      
+
       const popupKey = `${address}|${statusText}|${speed}|${vehicle.fuelQuantity ?? ''}|${vehicle.battery ?? ''}|${vehicle.network ?? ''}|${vehicle.distanceToday ?? ''}|${vehicle.driver ?? ''}|${vehicle.mileage}`;
       const prevState = markerStateRef.current.get(vehicle.id);
       const popupExists = !!marker.getPopup();
-      const shouldUpdatePopup = !popupExists || !prevState || prevState.popupKey !== popupKey || marker.isPopupOpen() || selectedVehicleId === vehicle.id;
+      const shouldUpdatePopup =
+        !popupExists ||
+        !prevState ||
+        prevState.popupKey !== popupKey ||
+        marker.isPopupOpen() ||
+        selectedVehicleId === vehicle.id;
+
       if (shouldUpdatePopup) {
         const popupContent = `
           <div style="padding: 12px; min-width: 240px; font-family: system-ui, -apple-system, sans-serif;">
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-              <div style="font-weight: 600; font-size: 16px; color: #1e293b;">${vehicle.plate}</div>
+              <div style="font-weight: 700; font-size: 16px; color: #0f172a;">${vehicle.plate}</div>
               <div style="display: flex; align-items: center; gap: 4px; padding: 2px 8px; background: ${statusColor}20; border-radius: 12px;">
                 <span style="width: 6px; height: 6px; border-radius: 50%; background: ${statusColor};"></span>
-                <span style="font-size: 11px; color: ${statusColor}; font-weight: 500;">${statusText}</span>
+                <span style="font-size: 11px; color: ${statusColor}; font-weight: 600;">${statusText}</span>
               </div>
             </div>
             <div style="font-size: 12px; color: #64748b; margin-bottom: 12px;">${vehicle.brand} ${vehicle.model}</div>
             
             <div style="display: grid; gap: 8px; font-size: 13px;">
-              <div style="display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; background: #f1f5f9; border-radius: 8px;">
+              <div style="display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
                 <span style="font-size: 16px;">📍</span>
                 <div style="flex: 1;">
-                  <div style="font-size: 11px; color: #94a3b8; margin-bottom: 2px;">Adresse</div>
-                  <div style="color: #334155; line-height: 1.3;">${address}</div>
+                  <div style="font-size: 10px; color: #94a3b8; font-weight: 600; text-transform: uppercase;">Adresse</div>
+                  <div style="color: #1e293b; line-height: 1.3; font-size: 12px;">${address}</div>
                 </div>
               </div>
               
@@ -424,83 +568,59 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
                 <div style="flex: 1; display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: ${isMoving ? '#ecfdf5' : '#fef3c7'}; border-radius: 8px;">
                   <span style="font-size: 16px;">${isMoving ? '🚗' : '🅿️'}</span>
                   <div>
-                    <div style="font-size: 11px; color: ${isMoving ? '#059669' : '#d97706'};">Vitesse</div>
-                    <div style="font-weight: 600; color: ${isMoving ? '#047857' : '#b45309'};">
-                      ${isMoving ? `${speed.toFixed(0)} km/h` : 'À l\'arrêt'}
+                    <div style="font-size: 10px; color: ${isMoving ? '#059669' : '#d97706'}; font-weight: 600; text-transform: uppercase;">Vitesse</div>
+                    <div style="font-weight: 700; color: ${isMoving ? '#047857' : '#b45309'}; font-size: 13px;">
+                      ${isMoving ? `${speed.toFixed(0)} km/h` : "À l'arrêt"}
                     </div>
                   </div>
                 </div>
                 
-                <div style="flex: 1; display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #f1f5f9; border-radius: 8px;">
+                <div style="flex: 1; display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
                   <span style="font-size: 16px;">🕐</span>
                   <div>
-                    <div style="font-size: 11px; color: #94a3b8;">Mise à jour</div>
-                    <div style="color: #334155; font-weight: 500;">${formatTimestamp(vehicle.lastPosition?.timestamp)}</div>
+                    <div style="font-size: 10px; color: #94a3b8; font-weight: 600; text-transform: uppercase;">Mise à jour</div>
+                    <div style="color: #334155; font-weight: 600; font-size: 12px;">${formatTimestamp(vehicle.lastPosition?.timestamp)}</div>
                   </div>
                 </div>
               </div>
-              
-              ${vehicle.driver ? `
-              <div style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: #f1f5f9; border-radius: 8px;">
+
+              ${
+                vehicle.driver
+                  ? `
+              <div style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
                 <span style="font-size: 16px;">👤</span>
                 <div>
-                  <div style="font-size: 11px; color: #94a3b8;">Conducteur</div>
-                  <div style="color: #334155;">${vehicle.driver}</div>
+                  <div style="font-size: 10px; color: #94a3b8; font-weight: 600; text-transform: uppercase;">Conducteur</div>
+                  <div style="color: #1e293b; font-weight: 500;">${vehicle.driver}</div>
                 </div>
               </div>
-              ` : ''}
+              `
+                  : ''
+              }
               
               <div style="display: flex; gap: 8px;">
-                <div style="flex: 1; display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #f1f5f9; border-radius: 8px;">
+                <div style="flex: 1; display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
                   <span style="font-size: 16px;">🛣️</span>
                   <div>
-                    <div style="font-size: 11px; color: #94a3b8;">Odomètre</div>
-                    <div style="color: #334155; font-weight: 500;">${vehicle.mileage.toLocaleString('fr-FR')} km</div>
+                    <div style="font-size: 10px; color: #94a3b8; font-weight: 600; text-transform: uppercase;">Odomètre</div>
+                    <div style="color: #1e293b; font-weight: 600;">${vehicle.mileage.toLocaleString('fr-FR')} km</div>
                   </div>
                 </div>
                 
-                ${vehicle.distanceToday !== null && vehicle.distanceToday !== undefined ? `
-                <div style="flex: 1; display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #f1f5f9; border-radius: 8px;">
+                ${
+                  vehicle.distanceToday !== null && vehicle.distanceToday !== undefined
+                    ? `
+                <div style="flex: 1; display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
                   <span style="font-size: 16px;">📏</span>
                   <div>
-                    <div style="font-size: 11px; color: #94a3b8;">Distance Jour</div>
-                    <div style="color: #334155; font-weight: 500;">${vehicle.distanceToday.toLocaleString('fr-FR')} km</div>
+                    <div style="font-size: 10px; color: #94a3b8; font-weight: 600; text-transform: uppercase;">Distance Jour</div>
+                    <div style="color: #1e293b; font-weight: 600;">${vehicle.distanceToday.toLocaleString('fr-FR')} km</div>
                   </div>
                 </div>
-                ` : ''}
+                `
+                    : ''
+                }
               </div>
-              
-              <div style="display: flex; gap: 8px;">
-                ${vehicle.fuelQuantity !== null && vehicle.fuelQuantity !== undefined ? `
-                <div style="flex: 1; display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: ${vehicle.fuelQuantity < 20 ? '#fef2f2' : vehicle.fuelQuantity < 40 ? '#fefce8' : '#f0fdf4'}; border-radius: 8px;">
-                  <span style="font-size: 16px;">⛽</span>
-                  <div>
-                    <div style="font-size: 11px; color: ${vehicle.fuelQuantity < 20 ? '#dc2626' : vehicle.fuelQuantity < 40 ? '#ca8a04' : '#16a34a'};">Carburant</div>
-                    <div style="color: ${vehicle.fuelQuantity < 20 ? '#dc2626' : vehicle.fuelQuantity < 40 ? '#ca8a04' : '#16a34a'}; font-weight: 600;">${vehicle.fuelQuantity.toFixed(0)}L</div>
-                  </div>
-                </div>
-                ` : ''}
-                
-                ${vehicle.battery !== null && vehicle.battery !== undefined ? `
-                <div style="flex: 1; display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: ${vehicle.battery < 20 ? '#fef2f2' : vehicle.battery < 50 ? '#fefce8' : '#f0fdf4'}; border-radius: 8px;">
-                  <span style="font-size: 16px;">🔋</span>
-                  <div>
-                    <div style="font-size: 11px; color: ${vehicle.battery < 20 ? '#dc2626' : vehicle.battery < 50 ? '#ca8a04' : '#16a34a'};">Batterie</div>
-                    <div style="color: ${vehicle.battery < 20 ? '#dc2626' : vehicle.battery < 50 ? '#ca8a04' : '#16a34a'}; font-weight: 600;">${vehicle.battery.toFixed(0)}%</div>
-                  </div>
-                </div>
-                ` : ''}
-              </div>
-              
-              ${vehicle.network !== null && vehicle.network !== undefined ? `
-              <div style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: ${vehicle.network < 30 ? '#fef2f2' : vehicle.network < 60 ? '#fefce8' : '#f0fdf4'}; border-radius: 8px;">
-                <span style="font-size: 16px;">📶</span>
-                <div>
-                  <div style="font-size: 11px; color: ${vehicle.network < 30 ? '#dc2626' : vehicle.network < 60 ? '#ca8a04' : '#16a34a'};">Réseau</div>
-                  <div style="color: ${vehicle.network < 30 ? '#dc2626' : vehicle.network < 60 ? '#ca8a04' : '#16a34a'}; font-weight: 600;">${vehicle.network.toFixed(0)}%</div>
-                </div>
-              </div>
-              ` : ''}
             </div>
           </div>
         `;
@@ -513,18 +633,18 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
       markerStateRef.current.set(vehicle.id, { iconKey, popupKey });
     });
 
-    // Fit bounds to all vehicles on first load
+    // Fit bounds on first load
     if (!hasFittedBounds.current && vehicles.length > 0) {
-      const vehiclesWithPosition = vehicles.filter(v => v.lastPosition);
+      const vehiclesWithPosition = vehicles.filter((v) => v.lastPosition);
       if (vehiclesWithPosition.length > 0) {
         const bounds = L.latLngBounds(
-          vehiclesWithPosition.map(v => [v.lastPosition!.lat, v.lastPosition!.lng])
+          vehiclesWithPosition.map((v) => [v.lastPosition!.lat, v.lastPosition!.lng])
         );
         map.fitBounds(bounds, { padding: [50, 50] });
         hasFittedBounds.current = true;
       }
     }
-  }, [vehicles, onVehicleSelect, enableClustering, selectedVehicleId]);
+  }, [vehicles, onVehicleSelect, enableClustering, selectedVehicleId, markerDensity, showPoints]);
 
   // Handle vehicle selection (fly to)
   useEffect(() => {
@@ -535,29 +655,29 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
     if (!mapRef.current || followingVehicleId) return;
     if (lastSelectedFlyToRef.current === selectedVehicleId) return;
 
-    const selectedVehicle = vehicles.find(v => v.id === selectedVehicleId);
+    const selectedVehicle = vehicles.find((v) => v.id === selectedVehicleId);
     if (selectedVehicle?.lastPosition) {
       lastSelectedFlyToRef.current = selectedVehicleId;
       mapRef.current.flyTo(
         [selectedVehicle.lastPosition.lat, selectedVehicle.lastPosition.lng],
-        15,
-        { duration: 1.5 }
+        16,
+        { duration: 1.2 }
       );
 
-      // Open popup for selected vehicle
       const marker = markersRef.current.get(selectedVehicleId);
       if (marker) {
-        setTimeout(() => marker.openPopup(), 500);
+        setTimeout(() => marker.openPopup(), 400);
       }
     }
   }, [selectedVehicleId, vehicles, followingVehicleId]);
 
+  // Handle reset view signal
   useEffect(() => {
     if (!mapRef.current || resetViewSignal === 0) return;
     const vehiclesWithPosition = vehicles.filter((vehicle) => vehicle.lastPosition);
     if (vehiclesWithPosition.length === 0) return;
     const bounds = L.latLngBounds(
-      vehiclesWithPosition.map((vehicle) => [vehicle.lastPosition!.lat, vehicle.lastPosition!.lng]),
+      vehiclesWithPosition.map((vehicle) => [vehicle.lastPosition!.lat, vehicle.lastPosition!.lng])
     );
     mapRef.current.fitBounds(bounds, { padding: [50, 50] });
     hasFittedBounds.current = true;
@@ -573,7 +693,7 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
     if (!mapRef.current || !followingVehicleId) return;
 
     const updateFollowPosition = () => {
-      const followedVehicle = vehicles.find(v => v.id === followingVehicleId);
+      const followedVehicle = vehicles.find((v) => v.id === followingVehicleId);
       if (followedVehicle?.lastPosition && mapRef.current) {
         mapRef.current.setView(
           [followedVehicle.lastPosition.lat, followedVehicle.lastPosition.lng],
@@ -583,10 +703,7 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
       }
     };
 
-    // Initial position
     updateFollowPosition();
-
-    // Keep following
     followIntervalRef.current = setInterval(updateFollowPosition, 2000);
 
     return () => {
@@ -596,40 +713,36 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
     };
   }, [followingVehicleId, vehicles]);
 
-  // Handle traceurs (live vehicle trails)
+  // Handle traceurs
   useEffect(() => {
     if (!mapRef.current) return;
     const map = mapRef.current;
 
-    // Update position history and polylines for enabled traceurs
     vehicles.forEach((vehicle) => {
       if (!vehicle.lastPosition) return;
 
-      const isTraceurEnabled = traceurVehicleIds.has(vehicle.id);
+      const isTraceurEnabled = traceurVehicleIds.has(vehicle.id) && showTraces;
       const newLatLng = L.latLng(vehicle.lastPosition.lat, vehicle.lastPosition.lng);
 
       if (isTraceurEnabled) {
-        // Add to position history
         if (!vehiclePositionHistory.has(vehicle.id)) {
           vehiclePositionHistory.set(vehicle.id, []);
         }
         const history = vehiclePositionHistory.get(vehicle.id)!;
-        
-        // Only add if position changed
+
         const lastPos = history[history.length - 1];
-        if (!lastPos || lastPos.distanceTo(newLatLng) > 5) { // 5 meters threshold
+        if (!lastPos || lastPos.distanceTo(newLatLng) > 5) {
           history.push(newLatLng);
           if (history.length > MAX_TRACEUR_POINTS) {
             history.shift();
           }
         }
 
-        // Create or update polyline
         if (!traceursRef.current.has(vehicle.id)) {
           const polyline = L.polyline(history, {
-            color: '#3b82f6',
+            color: '#10b981',
             weight: 4,
-            opacity: 0.8,
+            opacity: 0.85,
             lineJoin: 'round',
             lineCap: 'round',
           }).addTo(map);
@@ -638,7 +751,6 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
           traceursRef.current.get(vehicle.id)!.setLatLngs(history);
         }
       } else {
-        // Remove traceur if disabled
         if (traceursRef.current.has(vehicle.id)) {
           map.removeLayer(traceursRef.current.get(vehicle.id)!);
           traceursRef.current.delete(vehicle.id);
@@ -647,22 +759,21 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
       }
     });
 
-    // Cleanup traceurs for vehicles that no longer exist
     traceursRef.current.forEach((polyline, id) => {
-      if (!vehicles.find(v => v.id === id)) {
+      if (!vehicles.find((v) => v.id === id)) {
         map.removeLayer(polyline);
         traceursRef.current.delete(id);
         vehiclePositionHistory.delete(id);
       }
     });
-  }, [vehicles, traceurVehicleIds]);
+  }, [vehicles, traceurVehicleIds, showTraces]);
 
   if (isLoading) {
     return (
-      <div className="absolute inset-0 flex items-center justify-center bg-muted/50">
+      <div className="absolute inset-0 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm z-30">
         <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-10 h-10 animate-spin text-primary" />
-          <p className="text-muted-foreground">Chargement des véhicules...</p>
+          <Loader2 className="w-10 h-10 animate-spin text-emerald-400" />
+          <p className="text-slate-300 text-sm font-medium">Chargement des véhicules...</p>
         </div>
       </div>
     );
@@ -670,12 +781,12 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
 
   if (error) {
     return (
-      <div className="absolute inset-0 flex items-center justify-center bg-muted/50">
-        <div className="flex flex-col items-center gap-3 text-center p-6">
-          <AlertTriangle className="w-10 h-10 text-destructive" />
-          <p className="text-destructive font-medium">Erreur de connexion GPSwox</p>
-          <p className="text-sm text-muted-foreground max-w-md">
-            {error.message || "Impossible de charger les véhicules"}
+      <div className="absolute inset-0 flex items-center justify-center bg-slate-950/80 z-30">
+        <div className="flex flex-col items-center gap-3 text-center p-6 bg-slate-900 border border-rose-500/30 rounded-2xl">
+          <AlertTriangle className="w-10 h-10 text-rose-500" />
+          <p className="text-rose-400 font-bold">Erreur de connexion GPSwox</p>
+          <p className="text-xs text-slate-400 max-w-md">
+            {error.message || 'Impossible de charger les véhicules'}
           </p>
         </div>
       </div>
@@ -691,48 +802,67 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
         }
         .custom-cluster-marker {
           background: transparent;
+          border: none;
         }
-        .cluster-icon {
+        
+        /* Animated Cluster Disc */
+        .animated-cluster-disc {
+          position: relative;
           display: flex;
           align-items: center;
           justify-content: center;
-          font-weight: 600;
-          color: white;
+          cursor: pointer;
+        }
+        .cluster-pulse-ring {
+          position: absolute;
+          inset: -4px;
           border-radius: 50%;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+          border: 2px solid rgba(34, 197, 94, 0.75);
+          animation: clusterPulseAnimation 2s cubic-bezier(0.24, 0, 0.38, 1) infinite;
+          pointer-events: none;
         }
-        .cluster-small {
-          background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-          font-size: 12px;
+        @keyframes clusterPulseAnimation {
+          0% { transform: scale(0.9); opacity: 0.9; }
+          70% { transform: scale(1.35); opacity: 0; }
+          100% { transform: scale(1.4); opacity: 0; }
         }
-        .cluster-medium {
-          background: linear-gradient(135deg, #f59e0b, #d97706);
-          font-size: 14px;
+        .cluster-svg-ring {
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
         }
-        .cluster-large {
-          background: linear-gradient(135deg, #ef4444, #dc2626);
-          font-size: 16px;
+        .cluster-inner-core {
+          position: absolute;
+          inset: 5px;
+          border-radius: 50%;
+          background: linear-gradient(135deg, #15803d, #16a34a);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45), inset 0 1px 2px rgba(255, 255, 255, 0.3);
         }
+        .cluster-count-text {
+          color: white;
+          font-weight: 800;
+          font-size: 13px;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+          text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+        }
+
         .leaflet-popup-content-wrapper {
-          border-radius: 12px;
-          box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+          border-radius: 16px;
+          box-shadow: 0 10px 30px rgba(0,0,0,0.3);
           padding: 0;
+          overflow: hidden;
         }
         .leaflet-popup-content {
           margin: 0;
         }
         .leaflet-popup-tip {
-          box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+          box-shadow: 0 4px 20px rgba(0,0,0,0.15);
         }
         .custom-popup .leaflet-popup-content-wrapper {
           padding: 0;
-        }
-        .vehicle-moving {
-          animation: pulse 1.5s ease-in-out infinite;
-        }
-        @keyframes pulse {
-          0%, 100% { transform: scale(1); }
-          50% { transform: scale(1.05); }
         }
         .leaflet-container {
           width: 100%;
@@ -740,7 +870,11 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
           z-index: 1;
         }
       `}</style>
-      <div ref={mapContainerRef} className="absolute inset-0 z-0" style={{ width: '100%', height: '100%' }} />
+      <div
+        ref={mapContainerRef}
+        className="absolute inset-0 z-0"
+        style={{ width: '100%', height: '100%' }}
+      />
     </>
   );
 };

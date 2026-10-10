@@ -1,38 +1,51 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Truck, Loader2, Layers, Home } from 'lucide-react';
+import {
+  Layers,
+  Home,
+  Navigation,
+  MapPin,
+  Settings,
+  ChevronUp,
+  X,
+} from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
-import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import GPSwoxMap, { MapLayerType } from '@/components/map/GPSwoxMap';
-import { MapLayerControl } from '@/components/map/MapLayerControl';
-import { VehicleFilters, VehicleFilter } from '@/components/map/VehicleFilters';
-import { RefreshControls } from '@/components/map/RefreshControls';
-import { VehicleListItem } from '@/components/map/VehicleListItem';
-import { TraceursControl } from '@/components/map/TraceursControl';
-import { useGPSwoxVehicles, GPSwoxVehicle } from '@/hooks/useGPSwoxVehicles';
+import GPSwoxMap, { MapLayerType, MapVehicle } from '@/components/map/GPSwoxMap';
+import { MapSettingsModal, MarkerDensity } from '@/components/map/MapSettingsModal';
+import { GroupedVehiclesModal } from '@/components/map/GroupedVehiclesModal';
+import { VehicleListDrawer } from '@/components/map/VehicleListDrawer';
+import { useGPSwoxVehicles } from '@/hooks/useGPSwoxVehicles';
 import { useLocation } from 'react-router-dom';
 
 export default function LiveMap() {
   const { i18n } = useTranslation();
   const isRTL = i18n.language === 'ar';
-  
+
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | undefined>();
   const [followingVehicleId, setFollowingVehicleId] = useState<string | undefined>();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState<VehicleFilter>('all');
-  const [isPaused, setIsPaused] = useState(false);
-  const [refreshInterval, setRefreshInterval] = useState(10000);
-  const [enableClustering, setEnableClustering] = useState(false);
-  const [lastUpdateTime, setLastUpdateTime] = useState<Date>();
+  const [enableClustering, setEnableClustering] = useState(true);
   const [mapLayer, setMapLayer] = useState<MapLayerType>('google-streets');
   const [traceurVehicleIds, setTraceurVehicleIds] = useState<Set<string>>(new Set());
   const [resetViewSignal, setResetViewSignal] = useState(0);
+  const [zoomSignal, setZoomSignal] = useState<{ type: 'in' | 'out'; id: number } | undefined>();
+
+  // Modals & Drawer state
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isClusterModalOpen, setIsClusterModalOpen] = useState(false);
+  const [clusterVehicles, setClusterVehicles] = useState<MapVehicle[]>([]);
+  const [activeClusterLayer, setActiveClusterLayer] = useState<any>(null);
+
+  // Map settings state (matching Image 3)
+  const [showGeofences, setShowGeofences] = useState(false);
+  const [showTraces, setShowTraces] = useState(true);
+  const [showPoints, setShowPoints] = useState(true);
+  const [markerDensity, setMarkerDensity] = useState<MarkerDensity>('standard');
+
   const location = useLocation();
 
-  const { data: vehicles = [], isLoading, error, refetch, isFetching } = useGPSwoxVehicles(
-    isPaused ? 0 : refreshInterval
-  );
+  const { data: vehicles = [], isLoading, error } = useGPSwoxVehicles(10000);
 
   useEffect(() => {
     const state = location.state as { vehicleId?: string } | null;
@@ -40,94 +53,66 @@ export default function LiveMap() {
       const id = String(state.vehicleId);
       setSelectedVehicleId(id);
       setFollowingVehicleId(id);
-      const found = vehicles.find((v) => String(v.id) === id);
-      if (found?.plate) {
-        setSearchQuery(found.plate);
-      }
     }
-  }, [location.state, vehicles]);
+  }, [location.state]);
 
-  // Update last update time when data changes
-  useMemo(() => {
-    if (vehicles.length > 0 && !isFetching) {
-      setLastUpdateTime(new Date());
-    }
-  }, [vehicles, isFetching]);
+  // Counts for live badge
+  const filterCounts = useMemo(
+    () => ({
+      all: vehicles.length,
+      online: vehicles.filter((v) => v.online === 'online' || v.online === 'ack').length,
+      offline: vehicles.filter((v) => v.online === 'offline').length,
+      moving: vehicles.filter((v) => v.lastPosition && v.lastPosition.speed > 0).length,
+      stopped: vehicles.filter((v) => !v.lastPosition || v.lastPosition.speed === 0).length,
+    }),
+    [vehicles]
+  );
 
-  // Filter and search logic
-  const filteredVehicles = useMemo(() => {
-    let result = vehicles;
+  // Formatted map vehicles for GPSwoxMap
+  const mapVehiclesList = useMemo<MapVehicle[]>(
+    () =>
+      vehicles.map((v) => ({
+        id: v.id,
+        plate: v.plate,
+        brand: v.brand,
+        model: v.model,
+        status: v.status,
+        mileage: v.mileage,
+        driver: v.driver,
+        fuelQuantity: v.fuelQuantity,
+        battery: v.battery,
+        network: v.network,
+        distanceToday: v.distanceToday,
+        online: v.online,
+        lastPosition: v.lastPosition
+          ? {
+              lat: v.lastPosition.lat,
+              lng: v.lastPosition.lng,
+              city: v.lastPosition.city,
+              speed: v.lastPosition.speed,
+              timestamp: v.lastPosition.timestamp,
+            }
+          : undefined,
+      })),
+    [vehicles]
+  );
 
-    // Apply search filter
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter(v => 
-        v.plate.toLowerCase().includes(query) ||
-        v.imei.toLowerCase().includes(query) ||
-        v.driver?.toLowerCase().includes(query)
-      );
-    }
-
-    // Apply status filter
-    switch (activeFilter) {
-      case 'online':
-        result = result.filter(v => v.online === 'online' || v.online === 'ack');
-        break;
-      case 'offline':
-        result = result.filter(v => v.online === 'offline');
-        break;
-      case 'moving':
-        result = result.filter(v => v.lastPosition && v.lastPosition.speed > 0);
-        break;
-      case 'stopped':
-        result = result.filter(v => !v.lastPosition || v.lastPosition.speed === 0);
-        break;
-    }
-
-    return result;
-  }, [vehicles, searchQuery, activeFilter]);
-
-  // Count for filters
-  const filterCounts = useMemo(() => ({
-    all: vehicles.length,
-    online: vehicles.filter(v => v.online === 'online' || v.online === 'ack').length,
-    offline: vehicles.filter(v => v.online === 'offline').length,
-    moving: vehicles.filter(v => v.lastPosition && v.lastPosition.speed > 0).length,
-    stopped: vehicles.filter(v => !v.lastPosition || v.lastPosition.speed === 0).length,
-  }), [vehicles]);
-
-  // Vehicles with position for map display
-  const vehiclesWithPosition = useMemo(() => 
-    filteredVehicles.filter(v => v.lastPosition),
-  [filteredVehicles]);
-
-  const handleVehicleClick = useCallback((vehicleId: string) => {
+  const handleVehicleSelect = useCallback((vehicleId: string) => {
     setSelectedVehicleId(vehicleId);
   }, []);
 
   const handleFollowVehicle = useCallback((vehicleId: string) => {
-    setFollowingVehicleId(prev => prev === vehicleId ? undefined : vehicleId);
+    setFollowingVehicleId((prev) => (prev === vehicleId ? undefined : vehicleId));
   }, []);
 
-  const handleManualRefresh = useCallback(() => {
-    refetch();
-  }, [refetch]);
-
-  const handleToggleTraceur = useCallback((vehicleId: string) => {
-    setTraceurVehicleIds(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(vehicleId)) {
-        newSet.delete(vehicleId);
-      } else {
-        newSet.add(vehicleId);
+  const handleToggleAllTraceurs = useCallback(() => {
+    setTraceurVehicleIds((prev) => {
+      if (prev.size > 0) {
+        return new Set();
       }
-      return newSet;
+      return new Set(vehicles.map((v) => v.id));
     });
-  }, []);
-
-  const handleClearAllTraceurs = useCallback(() => {
-    setTraceurVehicleIds(new Set());
-  }, []);
+  }, [vehicles]);
 
   const handleResetMapView = useCallback(() => {
     setFollowingVehicleId(undefined);
@@ -135,218 +120,242 @@ export default function LiveMap() {
     setResetViewSignal((prev) => prev + 1);
   }, []);
 
+  // Handle cluster click from map
+  const handleClusterClick = useCallback((clusterItems: MapVehicle[], clusterLayer: any) => {
+    setClusterVehicles(clusterItems);
+    setActiveClusterLayer(clusterLayer);
+    setIsClusterModalOpen(true);
+  }, []);
+
+  const handleSeparateCluster = useCallback(() => {
+    if (activeClusterLayer && typeof activeClusterLayer.zoomToBounds === 'function') {
+      activeClusterLayer.zoomToBounds({ padding: [30, 30] });
+    }
+  }, [activeClusterLayer]);
+
+  // Current map layer display label
+  const layerLabel = useMemo(() => {
+    switch (mapLayer) {
+      case 'google-streets':
+        return 'Google Maps';
+      case 'google-satellite':
+        return 'Satellite';
+      case 'google-terrain':
+        return 'Relief';
+      case 'google-hybrid':
+        return 'Hybride';
+      default:
+        return 'Google Maps';
+    }
+  }, [mapLayer]);
+
   return (
     <DashboardLayout>
-      <div className="h-[calc(100vh-7rem)] flex gap-4" dir={isRTL ? 'rtl' : 'ltr'}>
-        {/* Map Area */}
-        <div className="flex-1 bg-card rounded-xl border border-border overflow-hidden relative">
-        <GPSwoxMap 
-            vehicles={vehiclesWithPosition.map(v => ({
-              id: v.id,
-              plate: v.plate,
-              brand: v.brand,
-              model: v.model,
-              status: v.status,
-              mileage: v.mileage,
-              driver: v.driver,
-              fuelQuantity: v.fuelQuantity,
-              battery: v.battery,
-              network: v.network,
-              distanceToday: v.distanceToday,
-              online: v.online,
-              lastPosition: v.lastPosition ? {
-                lat: v.lastPosition.lat,
-                lng: v.lastPosition.lng,
-                city: v.lastPosition.city,
-                speed: v.lastPosition.speed,
-                timestamp: v.lastPosition.timestamp,
-              } : undefined,
-            }))}
-            selectedVehicleId={selectedVehicleId}
-            followingVehicleId={followingVehicleId}
-            onVehicleSelect={handleVehicleClick}
-            isLoading={isLoading}
-            error={error}
-            enableClustering={enableClustering}
-            mapLayer={mapLayer}
-            traceurVehicleIds={traceurVehicleIds}
-            resetViewSignal={resetViewSignal}
-          />
+      <div className="relative h-[calc(100vh-5.5rem)] w-full rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-[#090D16]" dir={isRTL ? 'rtl' : 'ltr'}>
+        {/* Full Bleed GPS Map */}
+        <GPSwoxMap
+          vehicles={mapVehiclesList}
+          selectedVehicleId={selectedVehicleId}
+          followingVehicleId={followingVehicleId}
+          onVehicleSelect={handleVehicleSelect}
+          isLoading={isLoading}
+          error={error}
+          enableClustering={enableClustering}
+          mapLayer={mapLayer}
+          traceurVehicleIds={traceurVehicleIds}
+          resetViewSignal={resetViewSignal}
+          markerDensity={markerDensity}
+          showGeofences={showGeofences}
+          showTraces={showTraces}
+          showPoints={showPoints}
+          zoomSignal={zoomSignal}
+          onClusterClick={handleClusterClick}
+        />
 
-          {/* Top Controls */}
-          <div className={cn(
-            'absolute top-4 flex items-center gap-3 z-10',
-            isRTL ? 'right-4' : 'left-4'
-          )}>
-            {/* Live indicator */}
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-card/90 backdrop-blur rounded-full shadow-lg">
-              {isFetching && !isLoading ? (
-                <Loader2 className="w-3 h-3 animate-spin text-primary" />
-              ) : isPaused ? (
-                <span className="w-2 h-2 rounded-full bg-warning" />
-              ) : (
-                <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
-              )}
-              <span className="text-sm font-medium text-foreground">
-                {isPaused ? 'En pause' : 'En direct'}
-              </span>
-              <span className="text-xs text-muted-foreground">
+        {/* Top-Left: Active Follow Pill */}
+        {followingVehicleId && (
+          <div
+            className={cn(
+              'absolute top-4 z-20 flex items-center gap-2.5 px-3.5 py-2 rounded-2xl bg-emerald-950/80 backdrop-blur-xl border border-emerald-500/50 shadow-xl text-white pointer-events-auto animate-in fade-in',
+              isRTL ? 'right-4' : 'left-4'
+            )}
+          >
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
+            <span className="text-xs font-bold tracking-wide">
+              Suivi : {vehicles.find((v) => v.id === followingVehicleId)?.plate || followingVehicleId}
+            </span>
+            <button
+              type="button"
+              onClick={() => setFollowingVehicleId(undefined)}
+              className="ml-1 p-1 rounded-lg hover:bg-emerald-800/50 text-slate-300 hover:text-white transition-colors"
+              title="Arrêter le suivi"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
+        {/* Right Floating Transparent Control Panel (Exact User Request) */}
+        <div
+          className={cn(
+            'absolute top-4 z-20 flex flex-col items-end gap-2.5 pointer-events-auto select-none',
+            isRTL ? 'left-4 items-start' : 'right-4 items-end'
+          )}
+        >
+          {/* Zoom In & Zoom Out Pill */}
+          <div className="bg-[#0B1020]/75 hover:bg-[#0B1020]/90 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl flex flex-col items-center overflow-hidden transition-colors">
+            <button
+              type="button"
+              onClick={() => setZoomSignal({ type: 'in', id: Date.now() })}
+              className="w-10 h-9 flex items-center justify-center text-white hover:text-emerald-400 hover:bg-white/5 transition-all text-lg font-bold"
+              title="Zoom avant"
+            >
+              +
+            </button>
+            <div className="w-6 border-b border-white/10" />
+            <button
+              type="button"
+              onClick={() => setZoomSignal({ type: 'out', id: Date.now() })}
+              className="w-10 h-9 flex items-center justify-center text-white hover:text-emerald-400 hover:bg-white/5 transition-all text-lg font-bold"
+              title="Zoom arrière"
+            >
+              −
+            </button>
+          </div>
+
+          {/* En direct • X en ligne Pill */}
+          <div className="bg-[#0B1020]/75 backdrop-blur-xl border border-white/10 px-3.5 py-2 rounded-2xl shadow-2xl flex flex-col items-center text-center">
+            <span className="text-xs font-bold text-white tracking-wide">En direct</span>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.9)]" />
+              <span className="text-[11px] font-semibold text-emerald-400">
                 • {filterCounts.online} en ligne
               </span>
             </div>
-
-            {/* Map Layer Selector */}
-            <MapLayerControl
-              currentLayer={mapLayer}
-              onLayerChange={setMapLayer}
-            />
-
-            {/* Clustering Toggle */}
-            <Button
-              variant={enableClustering ? "default" : "outline"}
-              size="sm"
-              className="h-8 gap-1.5 bg-card/90 backdrop-blur shadow-lg"
-              onClick={() => setEnableClustering(!enableClustering)}
-            >
-              <Layers className="w-4 h-4" />
-              <span className="text-xs">Grouper</span>
-            </Button>
-
-            {/* Traceurs Control */}
-            <TraceursControl
-              enabledVehicleIds={traceurVehicleIds}
-              vehicles={vehicles.map(v => ({ id: v.id, plate: v.plate }))}
-              onToggleTraceur={handleToggleTraceur}
-              onClearAll={handleClearAllTraceurs}
-              isRTL={isRTL}
-            />
-
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 gap-1.5 bg-card/90 backdrop-blur shadow-lg"
-              onClick={handleResetMapView}
-            >
-              <Home className="w-4 h-4" />
-              <span className="text-xs">Vue globale</span>
-            </Button>
           </div>
 
-          {/* Following indicator */}
-          {followingVehicleId && (
-            <div className={cn(
-              'absolute top-16 px-3 py-2 bg-primary text-primary-foreground rounded-lg shadow-lg z-10 flex items-center gap-2',
-              isRTL ? 'right-4' : 'left-4'
-            )}>
-              <span className="w-2 h-2 rounded-full bg-primary-foreground animate-pulse" />
-              <span className="text-sm font-medium">
-                Suivi en cours : {vehicles.find(v => v.id === followingVehicleId)?.plate}
-              </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 px-2 text-xs hover:bg-primary-foreground/20"
-                onClick={() => setFollowingVehicleId(undefined)}
-              >
-                Arrêter
-              </Button>
-            </div>
-          )}
+          {/* Google Maps / Map Style Switcher Button */}
+          <button
+            type="button"
+            onClick={() => setIsSettingsOpen(true)}
+            className="bg-[#0B1020]/75 hover:bg-[#0B1020]/90 backdrop-blur-xl border border-white/10 hover:border-emerald-500/50 px-3.5 py-2.5 rounded-2xl shadow-2xl text-white text-xs font-semibold flex items-center gap-2 transition-all group"
+          >
+            <Layers className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
+            <span>{layerLabel}</span>
+          </button>
 
-          {/* Legend */}
-          <div className={cn(
-            'absolute bottom-4 flex items-center gap-4 px-4 py-2 bg-card/90 backdrop-blur rounded-full shadow-lg z-10',
-            isRTL ? 'right-4' : 'left-4'
-          )}>
-            <div className="flex items-center gap-2 text-xs">
-              <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#22c55e' }} />
-              <span className="text-muted-foreground">Mouvement</span>
-            </div>
-            <div className="flex items-center gap-2 text-xs">
-              <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#ef4444' }} />
-              <span className="text-destructive">À l'arrêt</span>
-            </div>
-            <div className="flex items-center gap-2 text-xs">
-              <span className="w-3 h-3 rounded-full" style={{ backgroundColor: '#f97316' }} />
-              <span className="text-muted-foreground">En ligne</span>
-            </div>
-            </div>
-        </div>
-
-        {/* Sidebar - Vehicle List */}
-        <div className={cn(
-          'w-80 bg-card rounded-xl border border-border flex flex-col',
-          isRTL && 'order-first'
-        )}>
-          {/* Header */}
-          <div className="p-4 border-b border-border space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-foreground flex items-center gap-2">
-                <Truck className="w-5 h-5" />
-                Véhicules
-              </h3>
-            </div>
-            
-            {/* Refresh Controls */}
-            <RefreshControls
-              isPaused={isPaused}
-              onTogglePause={() => setIsPaused(!isPaused)}
-              refreshInterval={refreshInterval}
-              onIntervalChange={setRefreshInterval}
-              onManualRefresh={handleManualRefresh}
-              isFetching={isFetching}
-              lastUpdate={lastUpdateTime}
-            />
-          </div>
-
-          {/* Filters */}
-          <div className="p-4 border-b border-border">
-            <VehicleFilters
-              searchQuery={searchQuery}
-              onSearchChange={setSearchQuery}
-              activeFilter={activeFilter}
-              onFilterChange={setActiveFilter}
-              counts={filterCounts}
-              isRTL={isRTL}
-            />
-          </div>
-
-          {/* Vehicle List */}
-          <div className="flex-1 overflow-auto p-4 space-y-3">
-            {isLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="w-6 h-6 animate-spin text-primary" />
-              </div>
-            ) : filteredVehicles.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <Truck className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                <p>Aucun véhicule</p>
-                {searchQuery && (
-                  <p className="text-sm mt-1">Essayez une autre recherche</p>
-                )}
-              </div>
-            ) : (
-              filteredVehicles.map((vehicle) => (
-                <VehicleListItem
-                  key={vehicle.id}
-                  vehicle={vehicle}
-                  isSelected={selectedVehicleId === vehicle.id}
-                  isFollowing={followingVehicleId === vehicle.id}
-                  onSelect={handleVehicleClick}
-                  onFollow={handleFollowVehicle}
-                />
-              ))
+          {/* Grouper Button */}
+          <button
+            type="button"
+            onClick={() => setEnableClustering((prev) => !prev)}
+            className={cn(
+              'backdrop-blur-xl border px-3.5 py-2.5 rounded-2xl shadow-2xl text-xs font-semibold flex items-center gap-2 transition-all',
+              enableClustering
+                ? 'bg-emerald-950/60 border-emerald-500 text-emerald-400 shadow-emerald-950/50'
+                : 'bg-[#0B1020]/75 hover:bg-[#0B1020]/90 border-white/10 text-white hover:border-white/20'
             )}
-          </div>
+          >
+            <Layers className="w-4 h-4" />
+            <span>Grouper</span>
+          </button>
 
-          {/* Footer Stats */}
-          <div className="p-3 border-t border-border bg-muted/30">
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>Affichés : {filteredVehicles.length}</span>
-              <span>Total : {vehicles.length}</span>
-            </div>
-          </div>
+          {/* Traceurs Button */}
+          <button
+            type="button"
+            onClick={handleToggleAllTraceurs}
+            className={cn(
+              'backdrop-blur-xl border px-3.5 py-2.5 rounded-2xl shadow-2xl text-xs font-semibold flex items-center gap-2 transition-all',
+              traceurVehicleIds.size > 0
+                ? 'bg-emerald-950/60 border-emerald-500 text-emerald-400 shadow-emerald-950/50'
+                : 'bg-[#0B1020]/75 hover:bg-[#0B1020]/90 border-white/10 text-white hover:border-white/20'
+            )}
+          >
+            <Navigation className="w-4 h-4" />
+            <span>Traceurs</span>
+          </button>
+
+          {/* Vue globale Button */}
+          <button
+            type="button"
+            onClick={handleResetMapView}
+            className="bg-[#0B1020]/75 hover:bg-[#0B1020]/90 backdrop-blur-xl border border-white/10 hover:border-emerald-500/50 px-3.5 py-2.5 rounded-2xl shadow-2xl text-white text-xs font-semibold flex items-center gap-2 transition-all"
+          >
+            <Home className="w-4 h-4 text-emerald-400" />
+            <span>Vue globale</span>
+          </button>
+
+          {/* Settings Gear Button */}
+          <button
+            type="button"
+            onClick={() => setIsSettingsOpen(true)}
+            className="bg-[#0B1020]/75 hover:bg-[#0B1020]/90 backdrop-blur-xl border border-white/10 hover:border-emerald-500/50 p-2.5 rounded-2xl shadow-2xl text-slate-300 hover:text-white transition-all"
+            title="Paramètres de la carte"
+          >
+            <Settings className="w-4 h-4" />
+          </button>
         </div>
+
+        {/* Bottom-Center Floating Button: Parc / Traceur (Exact User Request) */}
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 pointer-events-auto">
+          <button
+            type="button"
+            onClick={() => setIsDrawerOpen((prev) => !prev)}
+            className="group relative flex items-center gap-3 px-5 py-3 rounded-full bg-[#0B1020]/85 hover:bg-[#0E1628] backdrop-blur-2xl border border-white/15 hover:border-emerald-500/60 text-white shadow-2xl transition-all duration-300 hover:scale-105 active:scale-95"
+          >
+            <div className="w-7 h-7 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+              <MapPin className="w-4 h-4 fill-emerald-400/30" />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-sm tracking-wide text-white">Parc</span>
+              <span className="bg-emerald-500 text-slate-950 text-xs font-extrabold px-2 py-0.5 rounded-full font-mono">
+                {vehicles.length}
+              </span>
+            </div>
+            <ChevronUp
+              className={cn(
+                'w-4 h-4 text-slate-400 transition-transform duration-300',
+                isDrawerOpen && 'rotate-180'
+              )}
+            />
+          </button>
+        </div>
+
+        {/* Bottom Sheet Drawer for Vehicle List (Image 2) */}
+        <VehicleListDrawer
+          open={isDrawerOpen}
+          onClose={() => setIsDrawerOpen(false)}
+          vehicles={mapVehiclesList}
+          selectedVehicleId={selectedVehicleId}
+          followingVehicleId={followingVehicleId}
+          onVehicleSelect={handleVehicleSelect}
+          onFollowVehicle={handleFollowVehicle}
+          fleetTitle="SFTM"
+        />
+
+        {/* Grouped Vehicles Modal (Image 4) */}
+        <GroupedVehiclesModal
+          open={isClusterModalOpen}
+          onOpenChange={setIsClusterModalOpen}
+          vehicles={clusterVehicles}
+          onSeparate={handleSeparateCluster}
+          onSelectVehicle={handleVehicleSelect}
+        />
+
+        {/* Map Settings Modal (Image 3) */}
+        <MapSettingsModal
+          open={isSettingsOpen}
+          onOpenChange={setIsSettingsOpen}
+          mapLayer={mapLayer}
+          onMapLayerChange={setMapLayer}
+          showGeofences={showGeofences}
+          onToggleGeofences={setShowGeofences}
+          showTraces={showTraces}
+          onToggleTraces={setShowTraces}
+          showPoints={showPoints}
+          onTogglePoints={setShowPoints}
+          markerDensity={markerDensity}
+          onMarkerDensityChange={setMarkerDensity}
+        />
       </div>
     </DashboardLayout>
   );
