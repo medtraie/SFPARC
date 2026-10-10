@@ -116,7 +116,7 @@ export default function LiveMap() {
   }, [mapLayer]);
 
   return (
-    <DashboardLayout>
+    <DashboardLayout hideSidebar={isDrawerOpen}>
       <div
         className="relative h-[calc(100vh-5.5rem)] w-full rounded-2xl overflow-hidden border border-white/10 shadow-2xl bg-[#090D16]"
         dir={isRTL ? 'rtl' : 'ltr'}
@@ -264,7 +264,7 @@ export default function LiveMap() {
           </button>
         </div>
 
-        {/* Center Floating Vehicle List Drawer */}
+        {/* Docked Vehicle List Drawer (Replaces Navigation Sidebar) */}
         <VehicleListDrawer
           open={isDrawerOpen}
           onClose={() => setIsDrawerOpen(false)}
@@ -274,6 +274,7 @@ export default function LiveMap() {
           onVehicleSelect={handleVehicleSelect}
           onFollowVehicle={handleFollowVehicle}
           fleetTitle="SFTM"
+          isRTL={isRTL}
         />
 
         {/* Compact Map Settings Modal */}

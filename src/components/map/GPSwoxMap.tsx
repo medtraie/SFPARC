@@ -518,7 +518,49 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
 
       const speed = vehicle.lastPosition?.speed || 0;
 
-      const popupKey = `${address}|${statusText}|${speed}|${vehicle.fuelQuantity ?? ''}|${vehicle.battery ?? ''}|${vehicle.network ?? ''}|${vehicle.distanceToday ?? ''}|${vehicle.driver ?? ''}|${vehicle.mileage}`;
+      // Status pill colors and label
+      let statusLabel = 'Inactif';
+      let badgeBg = 'rgba(100, 116, 139, 0.15)';
+      let badgeBorder = 'rgba(100, 116, 139, 0.3)';
+      let badgeColor = '#94a3b8';
+      let badgeDot = '#64748b';
+
+      if (!isOnline) {
+        statusLabel = 'Hors ligne';
+        badgeBg = 'rgba(239, 68, 68, 0.15)';
+        badgeBorder = 'rgba(239, 68, 68, 0.35)';
+        badgeColor = '#f87171';
+        badgeDot = '#ef4444';
+      } else if (vehicle.status === 'maintenance') {
+        statusLabel = 'Maintenance';
+        badgeBg = 'rgba(245, 158, 11, 0.15)';
+        badgeBorder = 'rgba(245, 158, 11, 0.35)';
+        badgeColor = '#fbbf24';
+        badgeDot = '#f59e0b';
+      } else if (isMoving) {
+        statusLabel = 'En mouvement';
+        badgeBg = 'rgba(16, 185, 129, 0.15)';
+        badgeBorder = 'rgba(16, 185, 129, 0.35)';
+        badgeColor = '#34d399';
+        badgeDot = '#10b981';
+      } else {
+        statusLabel = "À l'arrêt";
+        badgeBg = 'rgba(245, 158, 11, 0.15)';
+        badgeBorder = 'rgba(245, 158, 11, 0.35)';
+        badgeColor = '#fbbf24';
+        badgeDot = '#f59e0b';
+      }
+
+      const fuelVal = vehicle.fuelQuantity ?? null;
+      const fuelColor = fuelVal !== null ? (fuelVal < 20 ? '#ef4444' : fuelVal < 40 ? '#f59e0b' : '#34d399') : '#94a3b8';
+
+      const batteryVal = vehicle.battery ?? null;
+      const batteryColor = batteryVal !== null ? (batteryVal < 20 ? '#ef4444' : batteryVal < 50 ? '#f59e0b' : '#34d399') : '#94a3b8';
+
+      const networkVal = vehicle.network ?? null;
+      const networkColor = networkVal !== null ? (networkVal < 30 ? '#ef4444' : networkVal < 60 ? '#f59e0b' : '#34d399') : '#94a3b8';
+
+      const popupKey = `${address}|${statusLabel}|${speed}|${vehicle.fuelQuantity ?? ''}|${vehicle.battery ?? ''}|${vehicle.network ?? ''}|${vehicle.distanceToday ?? ''}|${vehicle.driver ?? ''}|${vehicle.mileage}`;
       const prevState = markerStateRef.current.get(vehicle.id);
       const popupExists = !!marker.getPopup();
       const shouldUpdatePopup =
@@ -530,87 +572,118 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
 
       if (shouldUpdatePopup) {
         const popupContent = `
-          <div style="padding: 12px; min-width: 240px; font-family: system-ui, -apple-system, sans-serif;">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-              <div style="font-weight: 700; font-size: 16px; color: #0f172a;">${vehicle.plate}</div>
-              <div style="display: flex; align-items: center; gap: 4px; padding: 2px 8px; background: ${statusColor}20; border-radius: 12px;">
-                <span style="width: 6px; height: 6px; border-radius: 50%; background: ${statusColor};"></span>
-                <span style="font-size: 11px; color: ${statusColor}; font-weight: 600;">${statusText}</span>
-              </div>
-            </div>
-            <div style="font-size: 12px; color: #64748b; margin-bottom: 12px;">${vehicle.brand} ${vehicle.model}</div>
+          <div style="padding: 16px; min-width: 300px; max-width: 350px; background: linear-gradient(145deg, #0e172a 0%, #090e1a 100%); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 22px; box-shadow: 0 20px 45px -10px rgba(0, 0, 0, 0.75), 0 0 25px rgba(16, 185, 129, 0.15); font-family: system-ui, -apple-system, sans-serif; color: #ffffff; box-sizing: border-box;">
             
-            <div style="display: grid; gap: 8px; font-size: 13px;">
-              <div style="display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
-                <span style="font-size: 16px;">📍</span>
-                <div style="flex: 1;">
-                  <div style="font-size: 10px; color: #94a3b8; font-weight: 600; text-transform: uppercase;">Adresse</div>
-                  <div style="color: #1e293b; line-height: 1.3; font-size: 12px;">${address}</div>
+            <!-- Header: Plate & Status Badge -->
+            <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 4px;">
+              <div>
+                <div style="font-weight: 800; font-size: 17px; color: #ffffff; letter-spacing: -0.01em; line-height: 1.2;">
+                  ${vehicle.plate}
+                </div>
+                <div style="font-size: 11px; color: #94a3b8; font-weight: 500; margin-top: 2px;">
+                  ${vehicle.brand ? `${vehicle.brand} ${vehicle.model}` : `GPS Device ${vehicle.plate}`}
                 </div>
               </div>
               
-              <div style="display: flex; gap: 8px;">
-                <div style="flex: 1; display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: ${isMoving ? '#ecfdf5' : '#fef3c7'}; border-radius: 8px;">
-                  <span style="font-size: 16px;">${isMoving ? '🚗' : '🅿️'}</span>
-                  <div>
-                    <div style="font-size: 10px; color: ${isMoving ? '#059669' : '#d97706'}; font-weight: 600; text-transform: uppercase;">Vitesse</div>
-                    <div style="font-weight: 700; color: ${isMoving ? '#047857' : '#b45309'}; font-size: 13px;">
-                      ${isMoving ? `${speed.toFixed(0)} km/h` : "À l'arrêt"}
-                    </div>
-                  </div>
+              <div style="display: flex; align-items: center; gap: 5px; padding: 3px 9px; background: ${badgeBg}; border: 1px solid ${badgeBorder}; border-radius: 12px; white-space: nowrap;">
+                <span style="width: 7px; height: 7px; border-radius: 50%; background: ${badgeDot}; box-shadow: 0 0 8px ${badgeDot};"></span>
+                <span style="font-size: 11px; color: ${badgeColor}; font-weight: 700;">${statusLabel}</span>
+              </div>
+            </div>
+
+            <!-- Real-time Address Card -->
+            <div style="margin-top: 10px; padding: 9px 11px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px;">
+              <div style="display: flex; align-items: center; gap: 5px; margin-bottom: 4px;">
+                <span style="font-size: 13px;">📍</span>
+                <span style="font-size: 9px; font-weight: 800; color: #34d399; letter-spacing: 0.08em; text-transform: uppercase;">
+                  ADRESSE EN TEMPS RÉEL
+                </span>
+              </div>
+              <div style="font-size: 11px; color: #e2e8f0; line-height: 1.4; word-break: break-word;">
+                ${address}
+              </div>
+            </div>
+
+            <!-- 4 Key Telematics Metrics (2x2 Grid) -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px;">
+              
+              <!-- Tile 1: Vitesse -->
+              <div style="padding: 8px 10px; background: ${isMoving ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.08)'}; border: 1px solid ${isMoving ? 'rgba(16, 185, 129, 0.25)' : 'rgba(245, 158, 11, 0.2)'}; border-radius: 14px;">
+                <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 2px;">
+                  <span style="font-size: 11px;">${isMoving ? '🚗' : '🅿️'}</span>
+                  <span style="font-size: 9px; font-weight: 800; color: ${isMoving ? '#34d399' : '#fbbf24'}; letter-spacing: 0.05em; text-transform: uppercase;">VITESSE</span>
                 </div>
-                
-                <div style="flex: 1; display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
-                  <span style="font-size: 16px;">🕐</span>
-                  <div>
-                    <div style="font-size: 10px; color: #94a3b8; font-weight: 600; text-transform: uppercase;">Mise à jour</div>
-                    <div style="color: #334155; font-weight: 600; font-size: 12px;">${formatTimestamp(vehicle.lastPosition?.timestamp)}</div>
-                  </div>
+                <div style="font-weight: 800; font-size: 13px; color: ${isMoving ? '#4ade80' : '#f59e0b'};">
+                  ${isMoving ? `${speed.toFixed(0)} km/h` : "À l'arrêt"}
                 </div>
               </div>
 
-              ${
-                vehicle.driver
-                  ? `
-              <div style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
-                <span style="font-size: 16px;">👤</span>
-                <div>
-                  <div style="font-size: 10px; color: #94a3b8; font-weight: 600; text-transform: uppercase;">Conducteur</div>
-                  <div style="color: #1e293b; font-weight: 500;">${vehicle.driver}</div>
+              <!-- Tile 2: Mise à jour -->
+              <div style="padding: 8px 10px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px;">
+                <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 2px;">
+                  <span style="font-size: 11px;">🕐</span>
+                  <span style="font-size: 9px; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em; text-transform: uppercase;">MISE À JOUR</span>
+                </div>
+                <div style="font-weight: 700; font-size: 12px; color: #f1f5f9;">
+                  ${formatTimestamp(vehicle.lastPosition?.timestamp)}
                 </div>
               </div>
-              `
-                  : ''
-              }
-              
-              <div style="display: flex; gap: 8px;">
-                <div style="flex: 1; display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
-                  <span style="font-size: 16px;">🛣️</span>
-                  <div>
-                    <div style="font-size: 10px; color: #94a3b8; font-weight: 600; text-transform: uppercase;">Odomètre</div>
-                    <div style="color: #1e293b; font-weight: 600;">${vehicle.mileage.toLocaleString('fr-FR')} km</div>
-                  </div>
+
+              <!-- Tile 3: Odomètre -->
+              <div style="padding: 8px 10px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px;">
+                <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 2px;">
+                  <span style="font-size: 11px;">🛣️</span>
+                  <span style="font-size: 9px; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em; text-transform: uppercase;">ODOMÈTRE</span>
                 </div>
-                
-                ${
-                  vehicle.distanceToday !== null && vehicle.distanceToday !== undefined
-                    ? `
-                <div style="flex: 1; display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
-                  <span style="font-size: 16px;">📏</span>
-                  <div>
-                    <div style="font-size: 10px; color: #94a3b8; font-weight: 600; text-transform: uppercase;">Distance Jour</div>
-                    <div style="color: #1e293b; font-weight: 600;">${vehicle.distanceToday.toLocaleString('fr-FR')} km</div>
-                  </div>
+                <div style="font-weight: 700; font-size: 12px; color: #f1f5f9;">
+                  ${vehicle.mileage.toLocaleString('fr-FR')} km
                 </div>
-                `
-                    : ''
-                }
               </div>
+
+              <!-- Tile 4: Distance Jour -->
+              <div style="padding: 8px 10px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px;">
+                <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 2px;">
+                  <span style="font-size: 11px;">📏</span>
+                  <span style="font-size: 9px; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em; text-transform: uppercase;">DISTANCE JOUR</span>
+                </div>
+                <div style="font-weight: 700; font-size: 12px; color: #f1f5f9;">
+                  ${vehicle.distanceToday !== null && vehicle.distanceToday !== undefined ? vehicle.distanceToday.toLocaleString('fr-FR') + ' km' : '0 km'}
+                </div>
+              </div>
+
             </div>
+
+            <!-- Telematics Indicators Bar -->
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.08);">
+              
+              <div style="display: flex; align-items: center; gap: 4px; font-size: 11px; color: #cbd5e1;">
+                <span style="font-size: 12px;">⛽</span>
+                <span style="font-weight: 700; color: ${fuelColor};">${fuelVal !== null ? fuelVal.toFixed(0) + 'L' : '--'}</span>
+              </div>
+
+              <div style="display: flex; align-items: center; gap: 4px; font-size: 11px; color: #cbd5e1;">
+                <span style="font-size: 12px;">🔋</span>
+                <span style="font-weight: 700; color: ${batteryColor};">${batteryVal !== null ? batteryVal.toFixed(0) + '%' : '--'}</span>
+              </div>
+
+              <div style="display: flex; align-items: center; gap: 4px; font-size: 11px; color: #cbd5e1;">
+                <span style="font-size: 12px;">📶</span>
+                <span style="font-weight: 700; color: ${networkColor};">${networkVal !== null ? networkVal.toFixed(0) + '%' : '--'}</span>
+              </div>
+
+              ${vehicle.driver ? `
+                <div style="display: flex; align-items: center; gap: 4px; font-size: 11px; color: #94a3b8; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                  <span>👤</span>
+                  <span style="color: #e2e8f0; font-weight: 600;">${vehicle.driver}</span>
+                </div>
+              ` : ''}
+
+            </div>
+
           </div>
         `;
         if (!popupExists) {
-          marker.bindPopup(popupContent, { maxWidth: 300, className: 'custom-popup' });
+          marker.bindPopup(popupContent, { maxWidth: 350, className: 'custom-popup' });
         } else {
           marker.setPopupContent(popupContent);
         }
