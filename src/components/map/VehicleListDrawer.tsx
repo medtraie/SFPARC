@@ -4,7 +4,6 @@ import {
   Share2,
   Bell,
   CheckCircle2,
-  Bookmark,
   Settings,
   X,
   Navigation2,
@@ -94,30 +93,62 @@ export const VehicleListDrawer: React.FC<VehicleListDrawerProps> = ({
 
   return (
     <>
+      <style>{`
+        /* Ultra-clean transparent scrollbars */
+        .parc-drawer-scrollbar::-webkit-scrollbar {
+          width: 4px;
+          height: 0px;
+        }
+        .parc-drawer-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .parc-drawer-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.15);
+          border-radius: 9999px;
+        }
+        .parc-drawer-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(255, 255, 255, 0.3);
+        }
+        .parc-drawer-scrollbar::-webkit-scrollbar-button {
+          display: none !important;
+          width: 0 !important;
+          height: 0 !important;
+        }
+        .parc-drawer-scrollbar {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+        }
+      `}</style>
+
       {/* Subtle backdrop overlay */}
       <div
         onClick={onClose}
-        className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px] transition-opacity duration-300"
+        className="fixed inset-0 z-40 bg-black/35 backdrop-blur-[3px] transition-opacity duration-300"
       />
 
-      {/* Docked Left/Right Drawer taking Navigation's exact place */}
+      {/* Docked Drawer with Transparent Gradient (transparent dégradée) */}
       <div
+        style={{
+          background: 'linear-gradient(180deg, rgba(11, 17, 32, 0.88) 0%, rgba(15, 23, 42, 0.75) 50%, rgba(9, 14, 26, 0.92) 100%)',
+          backdropFilter: 'blur(28px)',
+          WebkitBackdropFilter: 'blur(28px)',
+        }}
         className={cn(
-          'fixed inset-y-0 z-50 w-80 sm:w-[380px] bg-[#0A101D]/98 backdrop-blur-2xl shadow-2xl flex flex-col transition-all duration-300 ease-out text-white',
+          'fixed inset-y-0 z-50 w-80 sm:w-[380px] shadow-2xl flex flex-col transition-all duration-300 ease-out text-white',
           isRTL
             ? 'right-0 border-l border-white/10 animate-in slide-in-from-right'
             : 'left-0 border-r border-white/10 animate-in slide-in-from-left'
         )}
       >
-        {/* Top Header with Close / Return to Navigation */}
-        <div className="p-4 border-b border-white/10 space-y-3 bg-[#0E1626]/60">
+        {/* Top Header */}
+        <div className="p-3.5 border-b border-white/10 space-y-2.5 bg-gradient-to-b from-white/[0.04] to-transparent">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold">
-                <CheckCircle2 className="w-4 h-4" />
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 flex items-center justify-center font-bold">
+                <CheckCircle2 className="w-3.5 h-3.5" />
               </div>
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   <span className="font-extrabold text-sm tracking-wide text-white">{fleetTitle}</span>
                   <span className="text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full">
                     {stats.total} Véhicules
@@ -131,8 +162,8 @@ export const VehicleListDrawer: React.FC<VehicleListDrawerProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="group flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-rose-500/20 border border-white/10 hover:border-rose-500/40 text-slate-300 hover:text-rose-400 transition-all text-xs font-semibold"
-              title="Fermer et restaurer le menu de navigation"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-transparent hover:bg-white/[0.08] border border-white/10 hover:border-white/20 text-slate-300 hover:text-white transition-all text-xs font-semibold"
+              title="Fermer et restaurer le menu"
             >
               <PanelLeftClose className="w-3.5 h-3.5" />
               <span className="text-[11px] hidden sm:inline">Menu</span>
@@ -145,10 +176,10 @@ export const VehicleListDrawer: React.FC<VehicleListDrawerProps> = ({
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Rechercher par immatriculation, marque..."
+                placeholder="Rechercher par immatriculation..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-slate-900/90 border border-white/10 rounded-xl pl-8 pr-7 py-2 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500 transition-colors"
+                className="w-full bg-slate-900/60 border border-white/10 rounded-xl pl-8 pr-7 py-1.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500 transition-colors"
               />
               {searchQuery && (
                 <button
@@ -163,83 +194,95 @@ export const VehicleListDrawer: React.FC<VehicleListDrawerProps> = ({
 
             <button
               type="button"
-              className="w-8 h-8 rounded-xl bg-slate-900/80 border border-white/10 flex items-center justify-center text-slate-300 hover:text-white transition-all shrink-0"
+              className="w-7 h-7 rounded-xl bg-transparent border border-white/10 flex items-center justify-center text-slate-300 hover:text-white transition-all shrink-0"
               title="Partager"
             >
-              <Share2 className="w-3.5 h-3.5" />
+              <Share2 className="w-3 h-3" />
             </button>
 
             <button
               type="button"
-              className="relative w-8 h-8 rounded-xl bg-slate-900/80 border border-white/10 flex items-center justify-center text-slate-300 hover:text-white transition-all shrink-0"
+              className="relative w-7 h-7 rounded-xl bg-transparent border border-white/10 flex items-center justify-center text-slate-300 hover:text-white transition-all shrink-0"
               title="Notifications"
             >
-              <Bell className="w-3.5 h-3.5" />
-              <span className="w-2 h-2 rounded-full bg-rose-500 absolute top-1.5 right-1.5 ring-2 ring-[#0A101D]" />
+              <Bell className="w-3 h-3" />
+              <span className="w-2 h-2 rounded-full bg-rose-500 absolute top-1 right-1 ring-2 ring-[#0A101D]" />
             </button>
           </div>
 
-          {/* Filter Pills */}
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 text-[11px]">
+          {/* 4 Clean Filter Pills (Zero Horizontal Scrollbar) */}
+          <div className="grid grid-cols-4 gap-1 pt-0.5 select-none">
+            {/* Tous */}
             <button
               type="button"
               onClick={() => setActiveTab('all')}
               className={cn(
-                'px-2.5 py-1 rounded-xl font-medium transition-all shrink-0',
+                'py-1.5 px-1 rounded-xl font-bold transition-all flex items-center justify-center gap-1 text-[11px]',
                 activeTab === 'all'
-                  ? 'bg-emerald-500 text-slate-950 font-bold shadow-md'
-                  : 'bg-slate-900/60 text-slate-300 hover:bg-slate-800 border border-white/5'
+                  ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/30'
+                  : 'bg-white/[0.05] hover:bg-white/[0.09] text-slate-300 border border-white/5'
               )}
+              title={`Tous les véhicules (${stats.total})`}
             >
-              Tous ({stats.total})
+              <span>Tous</span>
+              <span className="font-mono text-[10px] opacity-80">({stats.total})</span>
             </button>
 
+            {/* Mouvement */}
             <button
               type="button"
               onClick={() => setActiveTab('moving')}
               className={cn(
-                'px-2.5 py-1 rounded-xl font-medium transition-all shrink-0 flex items-center gap-1',
+                'py-1.5 px-1 rounded-xl font-bold transition-all flex items-center justify-center gap-1 text-[11px]',
                 activeTab === 'moving'
-                  ? 'bg-emerald-500 text-slate-950 font-bold shadow-md'
-                  : 'bg-slate-900/60 text-slate-300 hover:bg-slate-800 border border-white/5'
+                  ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/30'
+                  : 'bg-white/[0.05] hover:bg-white/[0.09] text-slate-300 border border-white/5'
               )}
+              title={`En mouvement (${stats.moving})`}
             >
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-              Mouvement ({stats.moving})
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
+              <span className="truncate">Mouv.</span>
+              <span className="font-mono text-[10px] opacity-80">({stats.moving})</span>
             </button>
 
+            {/* Arrêt */}
             <button
               type="button"
               onClick={() => setActiveTab('stopped')}
               className={cn(
-                'px-2.5 py-1 rounded-xl font-medium transition-all shrink-0 flex items-center gap-1',
+                'py-1.5 px-1 rounded-xl font-bold transition-all flex items-center justify-center gap-1 text-[11px]',
                 activeTab === 'stopped'
-                  ? 'bg-emerald-500 text-slate-950 font-bold shadow-md'
-                  : 'bg-slate-900/60 text-slate-300 hover:bg-slate-800 border border-white/5'
+                  ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/30'
+                  : 'bg-white/[0.05] hover:bg-white/[0.09] text-slate-300 border border-white/5'
               )}
+              title={`À l'arrêt (${stats.stopped})`}
             >
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-              Arrêt ({stats.stopped})
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+              <span>Arrêt</span>
+              <span className="font-mono text-[10px] opacity-80">({stats.stopped})</span>
             </button>
 
+            {/* Hors ligne */}
             <button
               type="button"
               onClick={() => setActiveTab('offline')}
               className={cn(
-                'px-2.5 py-1 rounded-xl font-medium transition-all shrink-0 flex items-center gap-1',
+                'py-1.5 px-1 rounded-xl font-bold transition-all flex items-center justify-center gap-1 text-[11px]',
                 activeTab === 'offline'
-                  ? 'bg-emerald-500 text-slate-950 font-bold shadow-md'
-                  : 'bg-slate-900/60 text-slate-300 hover:bg-slate-800 border border-white/5'
+                  ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/30'
+                  : 'bg-white/[0.05] hover:bg-white/[0.09] text-slate-300 border border-white/5'
               )}
+              title={`Hors ligne (${stats.offline})`}
             >
-              <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-              Hors ligne ({stats.offline})
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
+              <span className="truncate">Hors</span>
+              <span className="font-mono text-[10px] opacity-80">({stats.offline})</span>
             </button>
           </div>
         </div>
 
-        {/* Scrollable Vehicle Cards List */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
+        {/* Scrollable Vehicle Cards List with Transparent Scrollbar */}
+        <div className="flex-1 overflow-y-auto p-3 space-y-2 parc-drawer-scrollbar">
           {filteredVehicles.length === 0 ? (
             <div className="text-center py-14 text-slate-400 text-xs">
               Aucun véhicule trouvé.
@@ -262,6 +305,11 @@ export const VehicleListDrawer: React.FC<VehicleListDrawerProps> = ({
                   })
                 : 'En attente';
 
+              // Clean brand label (remove redundant "GPS Device" prefix)
+              const cleanBrand = vehicle.brand && !vehicle.brand.toLowerCase().startsWith('gps device')
+                ? vehicle.brand
+                : '';
+
               // Speedometer Gauge HUD calculation
               const radius = 17;
               const circumference = 2 * Math.PI * radius;
@@ -279,22 +327,28 @@ export const VehicleListDrawer: React.FC<VehicleListDrawerProps> = ({
                 <div
                   key={vehicle.id}
                   onClick={() => onVehicleSelect(vehicle.id)}
+                  style={{
+                    background: isSelected
+                      ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.16) 0%, rgba(15, 23, 42, 0.85) 100%)'
+                      : 'linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%)',
+                    backdropFilter: 'blur(10px)',
+                  }}
                   className={cn(
                     'group relative p-3 rounded-2xl border transition-all duration-200 cursor-pointer flex items-center justify-between',
                     isSelected
-                      ? 'bg-[#15233D] border-emerald-500 shadow-lg shadow-emerald-950/50'
-                      : 'bg-[#0E1626]/80 hover:bg-[#131E33] border-white/5 hover:border-white/15'
+                      ? 'border-emerald-500/80 shadow-lg shadow-emerald-950/50'
+                      : 'border-white/5 hover:border-white/20 hover:bg-white/[0.04]'
                   )}
                 >
-                  {/* Left Column: Details */}
+                  {/* Left Column: Details without redundant GPS Device prefix */}
                   <div className="space-y-1 min-w-0 pr-2">
                     <div className="flex items-center gap-1.5">
-                      <span className="font-extrabold text-sm text-white truncate tracking-wide">
+                      <span className="font-extrabold text-sm text-white tracking-wide truncate">
                         {vehicle.plate}
                       </span>
-                      {vehicle.brand && (
+                      {cleanBrand && (
                         <span className="text-[11px] text-slate-400 font-medium truncate">
-                          {vehicle.brand} {vehicle.model}
+                          {cleanBrand} {vehicle.model || ''}
                         </span>
                       )}
                     </div>
@@ -368,7 +422,7 @@ export const VehicleListDrawer: React.FC<VehicleListDrawerProps> = ({
                           'w-7 h-7 rounded-lg flex items-center justify-center border transition-all',
                           isFollowing
                             ? 'bg-emerald-500 border-emerald-400 text-slate-950 font-bold'
-                            : 'bg-slate-800/80 border-white/5 text-slate-400 hover:text-white hover:bg-slate-700'
+                            : 'bg-white/[0.06] border-white/5 text-slate-400 hover:text-white hover:bg-white/[0.12]'
                         )}
                         title={isFollowing ? 'Arrêter le suivi' : 'Suivre le véhicule'}
                       >
@@ -381,7 +435,7 @@ export const VehicleListDrawer: React.FC<VehicleListDrawerProps> = ({
                           e.stopPropagation();
                           onVehicleSelect(vehicle.id);
                         }}
-                        className="w-7 h-7 rounded-lg bg-slate-800/80 border border-white/5 text-slate-400 hover:text-white hover:bg-slate-700 flex items-center justify-center transition-all"
+                        className="w-7 h-7 rounded-lg bg-white/[0.06] border border-white/5 text-slate-400 hover:text-white hover:bg-white/[0.12] flex items-center justify-center transition-all"
                         title="Détails"
                       >
                         <Settings className="w-3.5 h-3.5" />
