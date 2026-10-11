@@ -129,15 +129,15 @@ export const VehicleListDrawer: React.FC<VehicleListDrawerProps> = ({
       {/* Docked Drawer with Transparent Gradient (transparent dégradée) */}
       <div
         style={{
-          background: 'linear-gradient(180deg, rgba(11, 17, 32, 0.88) 0%, rgba(15, 23, 42, 0.75) 50%, rgba(9, 14, 26, 0.92) 100%)',
+          background: 'linear-gradient(180deg, rgba(2, 6, 23, 0.88) 0%, rgba(15, 23, 42, 0.78) 50%, rgba(2, 6, 23, 0.92) 100%)',
           backdropFilter: 'blur(28px)',
           WebkitBackdropFilter: 'blur(28px)',
         }}
         className={cn(
           'fixed inset-y-0 z-50 w-80 sm:w-[380px] shadow-2xl flex flex-col transition-all duration-300 ease-out text-white',
           isRTL
-            ? 'right-0 border-l border-white/10 animate-in slide-in-from-right'
-            : 'left-0 border-r border-white/10 animate-in slide-in-from-left'
+            ? 'right-0 border-l border-emerald-500/15 animate-in slide-in-from-right'
+            : 'left-0 border-r border-emerald-500/15 animate-in slide-in-from-left'
         )}
       >
         {/* Top Header */}
