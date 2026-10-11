@@ -239,11 +239,14 @@ export default function LiveMap() {
           <button
             type="button"
             onClick={() => setIsDrawerOpen((prev) => !prev)}
+            style={{
+              backgroundColor: isDrawerOpen ? 'rgba(144, 144, 147, 0.75)' : 'rgba(144, 144, 147, 0.55)',
+            }}
             className={cn(
               'group relative flex items-center gap-3 px-5 py-3 rounded-full backdrop-blur-2xl border transition-all duration-300 hover:scale-105 active:scale-95 shadow-2xl',
               isDrawerOpen
-                ? 'bg-emerald-950/60 border-emerald-500/80 text-white shadow-[0_0_20px_rgba(16,185,129,0.3)]'
-                : 'bg-slate-950/40 hover:bg-slate-900/60 border-white/20 hover:border-emerald-500/50 text-white'
+                ? 'border-emerald-500/80 text-white shadow-[0_0_25px_rgba(144,144,147,0.4)]'
+                : 'hover:bg-[#909093]/70 border-white/30 hover:border-emerald-400/60 text-white shadow-lg'
             )}
           >
             <div className="w-7 h-7 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center">

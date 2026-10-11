@@ -126,18 +126,18 @@ export const VehicleListDrawer: React.FC<VehicleListDrawerProps> = ({
         className="fixed inset-0 z-40 bg-black/35 backdrop-blur-[3px] transition-opacity duration-300"
       />
 
-      {/* Docked Drawer with Transparent Gradient (transparent dégradée) */}
+      {/* Docked Drawer with Transparent Gradient (#909093 / rgba(144, 144, 147)) */}
       <div
         style={{
-          background: 'linear-gradient(180deg, rgba(2, 6, 23, 0.88) 0%, rgba(15, 23, 42, 0.78) 50%, rgba(2, 6, 23, 0.92) 100%)',
+          background: 'linear-gradient(180deg, rgba(144, 144, 147, 0.78) 0%, rgba(120, 120, 125, 0.72) 50%, rgba(95, 95, 100, 0.85) 100%)',
           backdropFilter: 'blur(28px)',
           WebkitBackdropFilter: 'blur(28px)',
         }}
         className={cn(
           'fixed inset-y-0 z-50 w-80 sm:w-[380px] shadow-2xl flex flex-col transition-all duration-300 ease-out text-white',
           isRTL
-            ? 'right-0 border-l border-emerald-500/15 animate-in slide-in-from-right'
-            : 'left-0 border-r border-emerald-500/15 animate-in slide-in-from-left'
+            ? 'right-0 border-l border-white/20 animate-in slide-in-from-right'
+            : 'left-0 border-r border-white/20 animate-in slide-in-from-left'
         )}
       >
         {/* Top Header */}
@@ -329,15 +329,15 @@ export const VehicleListDrawer: React.FC<VehicleListDrawerProps> = ({
                   onClick={() => onVehicleSelect(vehicle.id)}
                   style={{
                     background: isSelected
-                      ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.16) 0%, rgba(15, 23, 42, 0.85) 100%)'
-                      : 'linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%)',
+                      ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.25) 0%, rgba(144, 144, 147, 0.45) 100%)'
+                      : 'linear-gradient(135deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.05) 100%)',
                     backdropFilter: 'blur(10px)',
                   }}
                   className={cn(
                     'group relative p-3 rounded-2xl border transition-all duration-200 cursor-pointer flex items-center justify-between',
                     isSelected
-                      ? 'border-emerald-500/80 shadow-lg shadow-emerald-950/50'
-                      : 'border-white/5 hover:border-white/20 hover:bg-white/[0.04]'
+                      ? 'border-emerald-400/80 shadow-lg shadow-black/20'
+                      : 'border-white/10 hover:border-white/25 hover:bg-white/[0.08]'
                   )}
                 >
                   {/* Left Column: Details without redundant GPS Device prefix */}

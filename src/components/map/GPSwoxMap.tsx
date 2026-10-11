@@ -572,7 +572,7 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
 
       if (shouldUpdatePopup) {
         const popupContent = `
-          <div style="padding: 16px; min-width: 300px; max-width: 350px; background: linear-gradient(145deg, rgba(2, 6, 23, 0.85) 0%, rgba(15, 23, 42, 0.78) 50%, rgba(2, 6, 23, 0.88) 100%); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); border: 1px solid rgba(16, 185, 129, 0.18); border-radius: 22px; box-shadow: 0 20px 45px -10px rgba(0, 0, 0, 0.75), 0 0 30px rgba(16, 185, 129, 0.12), inset 0 1px 0 rgba(255,255,255,0.06); font-family: system-ui, -apple-system, sans-serif; color: #ffffff; box-sizing: border-box;">
+          <div style="padding: 16px; min-width: 300px; max-width: 350px; background: linear-gradient(145deg, rgba(144, 144, 147, 0.75) 0%, rgba(120, 120, 125, 0.70) 50%, rgba(95, 95, 100, 0.82) 100%); backdrop-filter: blur(28px); -webkit-backdrop-filter: blur(28px); border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 22px; box-shadow: 0 20px 45px -10px rgba(0, 0, 0, 0.5), 0 0 30px rgba(144, 144, 147, 0.2), inset 0 1px 0 rgba(255,255,255,0.2); font-family: system-ui, -apple-system, sans-serif; color: #ffffff; box-sizing: border-box;">
             
             <!-- Header: Plate & Status Badge with Speed -->
             <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 4px;">
@@ -580,7 +580,7 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
                 <div style="font-weight: 800; font-size: 17px; color: #ffffff; letter-spacing: -0.01em; line-height: 1.2;">
                   ${vehicle.plate}
                 </div>
-                <div style="font-size: 11px; color: #94a3b8; font-weight: 500; margin-top: 2px;">
+                <div style="font-size: 11px; color: #e2e8f0; font-weight: 500; margin-top: 2px;">
                   ${vehicle.brand ? `${vehicle.brand} ${vehicle.model}` : `GPS Device ${vehicle.plate}`}
                 </div>
               </div>
@@ -591,22 +591,22 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
                   <span style="width: 7px; height: 7px; border-radius: 50%; background: ${badgeDot}; box-shadow: 0 0 8px ${badgeDot};"></span>
                   <span style="font-size: 11px; color: ${badgeColor}; font-weight: 700;">${statusLabel}</span>
                 </div>
-                <div style="display: flex; align-items: center; gap: 4px; padding: 2px 8px; background: ${isMoving ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.1)'}; border: 1px solid ${isMoving ? 'rgba(16, 185, 129, 0.25)' : 'rgba(245, 158, 11, 0.2)'}; border-radius: 10px;">
+                <div style="display: flex; align-items: center; gap: 4px; padding: 2px 8px; background: ${isMoving ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.18)'}; border: 1px solid ${isMoving ? 'rgba(16, 185, 129, 0.4)' : 'rgba(245, 158, 11, 0.35)'}; border-radius: 10px;">
                   <span style="font-size: 10px;">${isMoving ? '🚗' : '🅿️'}</span>
-                  <span style="font-size: 12px; font-weight: 800; color: ${isMoving ? '#4ade80' : '#fbbf24'}; font-variant-numeric: tabular-nums;">${isMoving ? speed.toFixed(0) + ' km/h' : "0 km/h"}</span>
+                  <span style="font-size: 12px; font-weight: 800; color: ${isMoving ? '#a7f3d0' : '#fef08a'}; font-variant-numeric: tabular-nums;">${isMoving ? speed.toFixed(0) + ' km/h' : "0 km/h"}</span>
                 </div>
               </div>
             </div>
 
             <!-- Real-time Address Card -->
-            <div style="margin-top: 10px; padding: 9px 11px; background: rgba(16, 185, 129, 0.04); border: 1px solid rgba(16, 185, 129, 0.1); border-radius: 14px;">
+            <div style="margin-top: 10px; padding: 9px 11px; background: rgba(0, 0, 0, 0.18); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 14px;">
               <div style="display: flex; align-items: center; gap: 5px; margin-bottom: 4px;">
                 <span style="font-size: 13px;">📍</span>
-                <span style="font-size: 9px; font-weight: 800; color: #34d399; letter-spacing: 0.08em; text-transform: uppercase;">
+                <span style="font-size: 9px; font-weight: 800; color: #6ee7b7; letter-spacing: 0.08em; text-transform: uppercase;">
                   ADRESSE EN TEMPS RÉEL
                 </span>
               </div>
-              <div style="font-size: 11px; color: #e2e8f0; line-height: 1.4; word-break: break-word;">
+              <div style="font-size: 11px; color: #f8fafc; line-height: 1.4; word-break: break-word;">
                 ${address}
               </div>
             </div>
@@ -615,45 +615,45 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px;">
               
               <!-- Tile 1: V.Max (replaces Vitesse) -->
-              <div style="padding: 8px 10px; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.18); border-radius: 14px;">
+              <div style="padding: 8px 10px; background: rgba(0, 0, 0, 0.18); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 14px;">
                 <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 2px;">
                   <span style="font-size: 11px;">🏎️</span>
-                  <span style="font-size: 9px; font-weight: 800; color: #34d399; letter-spacing: 0.05em; text-transform: uppercase;">V.MAX</span>
+                  <span style="font-size: 9px; font-weight: 800; color: #6ee7b7; letter-spacing: 0.05em; text-transform: uppercase;">V.MAX</span>
                 </div>
-                <div style="font-weight: 800; font-size: 13px; color: #4ade80;">
+                <div style="font-weight: 800; font-size: 13px; color: #a7f3d0;">
                   ${vehicle.topSpeedToday !== null && vehicle.topSpeedToday !== undefined ? vehicle.topSpeedToday.toFixed(0) + ' km/h' : speed.toFixed(0) + ' km/h'}
                 </div>
               </div>
 
               <!-- Tile 2: Distance Jour (replaces Mise à jour) -->
-              <div style="padding: 8px 10px; background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.12); border-radius: 14px;">
+              <div style="padding: 8px 10px; background: rgba(0, 0, 0, 0.18); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 14px;">
                 <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 2px;">
                   <span style="font-size: 11px;">📏</span>
-                  <span style="font-size: 9px; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em; text-transform: uppercase;">DISTANCE JOUR</span>
+                  <span style="font-size: 9px; font-weight: 800; color: #cbd5e1; letter-spacing: 0.05em; text-transform: uppercase;">DISTANCE JOUR</span>
                 </div>
-                <div style="font-weight: 700; font-size: 12px; color: #f1f5f9;">
+                <div style="font-weight: 700; font-size: 12px; color: #ffffff;">
                   ${vehicle.distanceToday !== null && vehicle.distanceToday !== undefined ? vehicle.distanceToday.toLocaleString('fr-FR') + ' km' : '0 km'}
                 </div>
               </div>
 
               <!-- Tile 3: Odomètre (unchanged) -->
-              <div style="padding: 8px 10px; background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.12); border-radius: 14px;">
+              <div style="padding: 8px 10px; background: rgba(0, 0, 0, 0.18); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 14px;">
                 <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 2px;">
                   <span style="font-size: 11px;">🛣️</span>
-                  <span style="font-size: 9px; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em; text-transform: uppercase;">ODOMÈTRE</span>
+                  <span style="font-size: 9px; font-weight: 800; color: #cbd5e1; letter-spacing: 0.05em; text-transform: uppercase;">ODOMÈTRE</span>
                 </div>
-                <div style="font-weight: 700; font-size: 12px; color: #f1f5f9;">
+                <div style="font-weight: 700; font-size: 12px; color: #ffffff;">
                   ${vehicle.mileage.toLocaleString('fr-FR')} km
                 </div>
               </div>
 
               <!-- Tile 4: Durée d'arrêt (replaces Distance Jour) -->
-              <div style="padding: 8px 10px; background: ${!isMoving ? 'rgba(245, 158, 11, 0.08)' : 'rgba(16, 185, 129, 0.05)'}; border: 1px solid ${!isMoving ? 'rgba(245, 158, 11, 0.18)' : 'rgba(16, 185, 129, 0.12)'}; border-radius: 14px;">
+              <div style="padding: 8px 10px; background: ${!isMoving ? 'rgba(245, 158, 11, 0.15)' : 'rgba(0, 0, 0, 0.18)'}; border: 1px solid ${!isMoving ? 'rgba(245, 158, 11, 0.3)' : 'rgba(255, 255, 255, 0.12)'}; border-radius: 14px;">
                 <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 2px;">
                   <span style="font-size: 11px;">⏱️</span>
-                  <span style="font-size: 9px; font-weight: 800; color: ${!isMoving ? '#fbbf24' : '#94a3b8'}; letter-spacing: 0.05em; text-transform: uppercase;">DURÉE D'ARRÊT</span>
+                  <span style="font-size: 9px; font-weight: 800; color: ${!isMoving ? '#fde047' : '#cbd5e1'}; letter-spacing: 0.05em; text-transform: uppercase;">DURÉE D'ARRÊT</span>
                 </div>
-                <div style="font-weight: 700; font-size: 12px; color: ${!isMoving ? '#f59e0b' : '#f1f5f9'};">
+                <div style="font-weight: 700; font-size: 12px; color: ${!isMoving ? '#fef08a' : '#ffffff'};">
                   ${vehicle.lastPosition?.stopDuration ? vehicle.lastPosition.stopDuration : (isMoving ? 'En route' : '--')}
                 </div>
               </div>
@@ -661,7 +661,7 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
             </div>
 
             <!-- Telematics Indicators Bar -->
-            <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(16, 185, 129, 0.12);">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.15);">
               
               <div style="display: flex; align-items: center; gap: 4px; font-size: 11px; color: #cbd5e1;">
                 <span style="font-size: 12px;">⛽</span>
