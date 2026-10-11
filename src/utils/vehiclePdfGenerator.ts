@@ -11,121 +11,136 @@ export function generateVehicleReportPdf(vehicle: MapVehicle) {
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  const primaryColor: [number, number, number] = [15, 23, 42]; // Dark slate
-  const accentEmerald: [number, number, number] = [16, 185, 129]; // Emerald
-  const accentCyan: [number, number, number] = [6, 182, 212]; // Cyan
-  const lightBg: [number, number, number] = [248, 250, 252]; // Slate 50
   const cardBorder: [number, number, number] = [226, 232, 240]; // Slate 200
 
-  // 1. Draw Luxury Header with Gradient-like banner
-  const headerHeight = 36;
-  doc.setFillColor(15, 23, 42);
-  doc.rect(0, 0, pageWidth, headerHeight, 'F');
+  // Helper to cleanly format numbers without non-breaking spaces or strange characters
+  const cleanFormatNumber = (num: number): string => {
+    return Math.round(num).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  };
 
-  // Decorative top accent strip
-  doc.setFillColor(16, 185, 129);
-  doc.rect(0, 0, pageWidth, 3, 'F');
-
-  // Decorative cyan circle glow in header
-  doc.setFillColor(6, 182, 212);
-  doc.circle(pageWidth - 16, 18, 12, 'F');
-  doc.setFillColor(15, 23, 42);
-  doc.circle(pageWidth - 16, 18, 11, 'F');
-
-  // Logo / System Title
-  doc.setTextColor(255, 255, 255);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(18);
-  doc.text('SFTM FLEET INTELLIGENCE', 14, 16);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(148, 163, 184);
-  doc.text('FICHE TECHNIQUE & RAPPORT DE TÉLÉMÉTRIE EN TEMPS RÉEL', 14, 23);
-  doc.text(`Document généré le : ${new Date().toLocaleString('fr-FR')}`, 14, 29);
-
-  // Status Badge in Header
+  // Status computation
   const isOnline = vehicle.online === 'online' || vehicle.online === 'ack';
   const speed = vehicle.lastPosition?.speed || 0;
   const isMoving = isOnline && speed > 0;
   const statusLabel = !isOnline
     ? 'HORS LIGNE'
     : vehicle.status === 'maintenance'
-    ? 'MAINTENANCE'
+    ? 'EN MAINTENANCE'
     : isMoving
     ? 'EN MOUVEMENT'
-    : "À L'ARRÊT";
+    : "A L'ARRET";
 
-  const badgeX = pageWidth - 65;
-  const badgeY = 12;
-  const badgeW = 45;
-  const badgeH = 12;
+  // ==========================================
+  // 1. LUXURY MODERN HEADER (Full Redesign)
+  // ==========================================
+  const headerHeight = 36;
+  // Deep Navy background
+  doc.setFillColor(15, 23, 42);
+  doc.rect(0, 0, pageWidth, headerHeight, 'F');
+
+  // Emerald geometric accent bar
+  doc.setFillColor(16, 185, 129);
+  doc.rect(0, 0, pageWidth, 3.5, 'F');
+
+  // Subtle modern corner accent
+  doc.setFillColor(30, 41, 59);
+  doc.triangle(pageWidth - 30, 0, pageWidth, 0, pageWidth, 30, 'F');
+
+  // Header Title with clean typography
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(17);
+  doc.text('SFTM FLEET INTELLIGENCE', 14, 15);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(148, 163, 184);
+  doc.text('RAPPORT TELEMETRIQUE & FICHE TECHNIQUE EN TEMPS REEL', 14, 22);
+
+  const formattedDate = new Date().toLocaleString('fr-FR').replace(/\s+/g, ' ');
+  doc.setFontSize(7.5);
+  doc.setTextColor(100, 116, 139);
+  doc.text(`Document genere le : ${formattedDate}`, 14, 28);
+
+  // Status Pill Badge (Top Right)
+  const badgeW = 42;
+  const badgeH = 10;
+  const badgeX = pageWidth - badgeW - 14;
+  const badgeY = 13;
 
   if (isMoving) {
-    doc.setFillColor(6, 78, 59); // Emerald 900
+    doc.setFillColor(6, 78, 59);
     doc.setDrawColor(16, 185, 129);
     doc.setTextColor(167, 243, 208);
   } else if (!isOnline) {
-    doc.setFillColor(127, 29, 29); // Red 900
+    doc.setFillColor(127, 29, 29);
     doc.setDrawColor(239, 68, 68);
     doc.setTextColor(254, 202, 202);
   } else {
-    doc.setFillColor(120, 53, 15); // Amber 900
+    doc.setFillColor(120, 53, 15);
     doc.setDrawColor(245, 158, 11);
     doc.setTextColor(254, 240, 138);
   }
 
   doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 3, 3, 'FD');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8.5);
-  doc.text(statusLabel, badgeX + badgeW / 2, badgeY + 7.5, { align: 'center' });
+  doc.setFontSize(8);
+  doc.text(statusLabel, badgeX + badgeW / 2, badgeY + 6.5, { align: 'center' });
 
-  // 2. Vehicle Identification Banner
-  let curY = 44;
-  doc.setFillColor(...lightBg);
+  // ==========================================
+  // 2. VEHICLE PROFILE BANNER
+  // ==========================================
+  let curY = 42;
+  doc.setFillColor(248, 250, 252);
   doc.setDrawColor(...cardBorder);
-  doc.roundedRect(14, curY, pageWidth - 28, 24, 3, 3, 'FD');
+  doc.roundedRect(14, curY, pageWidth - 28, 22, 3, 3, 'FD');
 
+  // Left side: Plate & Model
   doc.setTextColor(15, 23, 42);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(15);
-  doc.text(vehicle.plate, 20, curY + 10);
+  doc.setFontSize(14);
+  doc.text(vehicle.plate, 20, curY + 9);
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
+  doc.setFontSize(9.5);
   doc.setTextColor(100, 116, 139);
-  const modelText = vehicle.brand ? `${vehicle.brand} ${vehicle.model || ''}` : 'Véhicule de Flotte';
-  doc.text(modelText, 20, curY + 17);
+  const modelText = vehicle.brand ? `${vehicle.brand} ${vehicle.model || ''}` : 'Vehicule Flotte SFTM';
+  doc.text(modelText, 20, curY + 16);
 
-  // Driver on the right side of the banner
+  // Right side: Driver
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  doc.setTextColor(71, 85, 105);
-  doc.text('CONDUCTEUR ASSIGNÉ', pageWidth - 20, curY + 9, { align: 'right' });
+  doc.setFontSize(8);
+  doc.setTextColor(100, 116, 139);
+  doc.text('CONDUCTEUR ASSIGNE', pageWidth - 20, curY + 8.5, { align: 'right' });
+
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
+  doc.setFontSize(10.5);
   doc.setTextColor(16, 185, 129);
-  doc.text(vehicle.driver || 'Non assigné', pageWidth - 20, curY + 17, { align: 'right' });
+  doc.text(vehicle.driver || 'Non assigne', pageWidth - 20, curY + 16, { align: 'right' });
 
-  // 3. Four Major Metric Cards (Grid 2x2 or 4 Columns)
-  curY = 74;
+  // ==========================================
+  // 3. FOUR METRIC CARDS (Fixed text boundaries & pure ASCII numbers)
+  // ==========================================
+  curY = 70;
   const colW = (pageWidth - 28 - 9) / 4;
-  const colH = 26;
+  const colH = 24;
 
-  const topSpeed = vehicle.topSpeedToday !== undefined && vehicle.topSpeedToday !== null
-    ? `${vehicle.topSpeedToday.toFixed(0)} km/h`
-    : `${speed.toFixed(0)} km/h`;
-  const distanceJour = vehicle.distanceToday !== undefined && vehicle.distanceToday !== null
-    ? `${vehicle.distanceToday.toLocaleString('fr-FR')} km`
+  const topSpeedVal = vehicle.topSpeedToday !== undefined && vehicle.topSpeedToday !== null
+    ? `${Math.round(vehicle.topSpeedToday)} km/h`
+    : `${Math.round(speed)} km/h`;
+
+  const distanceJourVal = vehicle.distanceToday !== undefined && vehicle.distanceToday !== null
+    ? `${cleanFormatNumber(vehicle.distanceToday)} km`
     : '0 km';
-  const odometre = `${vehicle.mileage.toLocaleString('fr-FR')} km`;
-  const stopDuration = vehicle.lastPosition?.stopDuration || (isMoving ? 'En mouvement' : '00h 55m');
+
+  const odometreVal = `${cleanFormatNumber(vehicle.mileage)} km`;
+  const stopDurationVal = vehicle.lastPosition?.stopDuration || (isMoving ? 'En route' : '00h 55m');
 
   const cardsData = [
-    { label: 'V.MAX DU JOUR', value: topSpeed, color: [16, 185, 129], iconText: 'SPEED' },
-    { label: 'DISTANCE JOUR', value: distanceJour, color: [6, 182, 212], iconText: 'DIST' },
-    { label: 'ODOMÈTRE TOTAL', value: odometre, color: [99, 102, 241], iconText: 'ODO' },
-    { label: "DURÉE D'ARRÊT", value: stopDuration, color: [245, 158, 11], iconText: 'STOP' },
+    { label: 'V.MAX JOUR', value: topSpeedVal, color: [16, 185, 129] },
+    { label: 'DISTANCE JOUR', value: distanceJourVal, color: [6, 182, 212] },
+    { label: 'ODOMETRE TOTAL', value: odometreVal, color: [99, 102, 241] },
+    { label: "DUREE D'ARRET", value: stopDurationVal, color: [245, 158, 11] },
   ];
 
   cardsData.forEach((c, idx) => {
@@ -134,7 +149,7 @@ export function generateVehicleReportPdf(vehicle: MapVehicle) {
     doc.setDrawColor(...cardBorder);
     doc.roundedRect(x, curY, colW, colH, 2.5, 2.5, 'FD');
 
-    // Colored top line
+    // Colored accent top stripe
     doc.setFillColor(c.color[0], c.color[1], c.color[2]);
     doc.rect(x, curY, colW, 2, 'F');
 
@@ -144,57 +159,64 @@ export function generateVehicleReportPdf(vehicle: MapVehicle) {
     doc.text(c.label, x + 4, curY + 8);
 
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11.5);
+    doc.setFontSize(10.5);
     doc.setTextColor(15, 23, 42);
-    doc.text(c.value, x + 4, curY + 18);
+    doc.text(c.value, x + 4, curY + 17);
   });
 
-  // 4. Real-time Location Box
-  curY = 106;
-  doc.setFillColor(...lightBg);
+  // ==========================================
+  // 4. REAL-TIME LOCATION BOX (Text wrapping fixed)
+  // ==========================================
+  curY = 100;
+  doc.setFillColor(248, 250, 252);
   doc.setDrawColor(...cardBorder);
-  doc.roundedRect(14, curY, pageWidth - 28, 22, 2.5, 2.5, 'FD');
+  doc.roundedRect(14, curY, pageWidth - 28, 20, 2.5, 2.5, 'FD');
 
   doc.setFillColor(16, 185, 129);
-  doc.circle(20, curY + 8, 2, 'F');
+  doc.circle(20, curY + 7, 2, 'F');
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8.5);
   doc.setTextColor(16, 185, 129);
-  doc.text('DERNIÈRE POSITION GPS CONNUE', 25, curY + 9);
+  doc.text('DERNIERE POSITION GPS CONNUE', 25, curY + 8);
+
+  const rawAddress = vehicle.lastPosition?.city
+    ? `${vehicle.lastPosition.city} (Coords: ${vehicle.lastPosition.lat.toFixed(5)}, ${vehicle.lastPosition.lng.toFixed(5)})`
+    : vehicle.lastPosition
+    ? `Coords GPS: ${vehicle.lastPosition.lat.toFixed(5)}, ${vehicle.lastPosition.lng.toFixed(5)}`
+    : 'Donnees GPS en attente';
 
   doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
+  doc.setFontSize(8);
   doc.setTextColor(30, 41, 59);
-  const addressText = vehicle.lastPosition?.city
-    ? `${vehicle.lastPosition.city} (Coordonnées: ${vehicle.lastPosition.lat.toFixed(5)}, ${vehicle.lastPosition.lng.toFixed(5)})`
-    : vehicle.lastPosition
-    ? `Coordonnées GPS: ${vehicle.lastPosition.lat.toFixed(5)}, ${vehicle.lastPosition.lng.toFixed(5)}`
-    : 'Données GPS non disponibles';
-  doc.text(addressText, 25, curY + 16);
+  // Wrap address text safely inside the container box width
+  const splitAddress = doc.splitTextToSize(rawAddress, pageWidth - 45);
+  doc.text(splitAddress[0] || rawAddress, 25, curY + 14.5);
 
-  // 5. Telematics Gauge Table
-  curY = 134;
+  // ==========================================
+  // 5. TELEMATICS & SENSORS TABLE WITH MODERN ICONS
+  // ==========================================
+  curY = 126;
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
+  doc.setFontSize(10.5);
   doc.setTextColor(15, 23, 42);
-  doc.text('INDICATEURS TÉLÉMÉTRIQUES & CAPTEURS', 14, curY);
+  doc.text('INDICATEURS TELEMETRIQUES & CAPTEURS', 14, curY);
 
-  const fuelText = vehicle.fuelQuantity !== null && vehicle.fuelQuantity !== undefined ? `${vehicle.fuelQuantity.toFixed(0)} L` : 'Non mesuré';
-  const batteryText = vehicle.battery !== null && vehicle.battery !== undefined ? `${vehicle.battery.toFixed(0)} %` : 'Non mesuré';
-  const networkText = vehicle.network !== null && vehicle.network !== undefined ? `${vehicle.network.toFixed(0)} %` : 'Non mesuré';
-  const currentSpeedText = `${speed.toFixed(0)} km/h`;
+  const fuelText = vehicle.fuelQuantity !== null && vehicle.fuelQuantity !== undefined ? `${Math.round(vehicle.fuelQuantity)} L` : 'Non mesure';
+  const batteryText = vehicle.battery !== null && vehicle.battery !== undefined ? `${Math.round(vehicle.battery)} %` : 'Non mesure';
+  const networkText = vehicle.network !== null && vehicle.network !== undefined ? `${Math.round(vehicle.network)} %` : 'Non mesure';
+  const currentSpeedText = `${Math.round(speed)} km/h`;
 
   autoTable(doc, {
-    startY: curY + 4,
+    startY: curY + 3.5,
     margin: { left: 14, right: 14 },
-    head: [['Capteur / Télémétrie', 'Valeur Actuelle', 'Statut Normalisé', 'Évaluation Système']],
+    head: [['Capteur / Telemetrie', 'Valeur Actuelle', 'Statut', 'Evaluation']],
     body: [
-      ['Niveau de Carburant (Réservoir)', fuelText, fuelText !== 'Non mesuré' ? 'Actif' : 'N/A', Number(vehicle.fuelQuantity) < 20 ? 'Alerte Réserve' : 'Niveau Optimal'],
-      ['Batterie / Tension Véhicule', batteryText, batteryText !== 'Non mesuré' ? 'Connecté' : 'N/A', Number(vehicle.battery) < 20 ? 'Faible' : 'Conforme'],
-      ['Couverture Réseau GSM / GPS', networkText, networkText !== 'Non mesuré' ? 'Signal Stable' : 'N/A', Number(vehicle.network) < 30 ? 'Moyen' : 'Excellent'],
-      ['Vitesse Instantanée', currentSpeedText, isMoving ? 'En Déplacement' : 'Stationnaire', isMoving ? 'Flux continu' : 'Moteur Coupé / Ralenti'],
-      ['État Boîtier Traceur', isOnline ? 'Connecté en Direct' : 'Déconnecté', isOnline ? 'Online (Synchro OK)' : 'Offline', isOnline ? 'Transmission en temps réel' : 'Vérification requise'],
+      ['[FUEL]  Niveau Carburant (Reservoir)', fuelText, fuelText !== 'Non mesure' ? 'Actif' : 'N/A', Number(vehicle.fuelQuantity) < 20 ? 'Alerte Reserve' : 'Niveau Optimal'],
+      ['[BATT]  Tension / Batterie Vehicule', batteryText, batteryText !== 'Non mesure' ? 'Connecte' : 'N/A', Number(vehicle.battery) < 20 ? 'Faible' : 'Conforme'],
+      ['[GSM]   Signal Reseau GSM / GPS', networkText, networkText !== 'Non mesure' ? 'Signal Stable' : 'N/A', Number(vehicle.network) < 30 ? 'Moyen' : 'Excellent'],
+      ['[SPD]   Vitesse Instantanee', currentSpeedText, isMoving ? 'En Trajet' : 'Stationnaire', isMoving ? 'Flux Continu' : 'Moteur Coupe / Ralenti'],
+      ['[GPS]   Etat Boitier Traceur', isOnline ? 'En Direct' : 'Deconnecte', isOnline ? 'Online (OK)' : 'Offline', isOnline ? 'Transmission Active' : 'Verification Requise'],
     ],
     theme: 'striped',
     headStyles: {
@@ -204,7 +226,7 @@ export function generateVehicleReportPdf(vehicle: MapVehicle) {
       fontSize: 8.5,
     },
     bodyStyles: {
-      fontSize: 8.5,
+      fontSize: 8,
       textColor: [30, 41, 59],
     },
     alternateRowStyles: {
@@ -212,24 +234,26 @@ export function generateVehicleReportPdf(vehicle: MapVehicle) {
     },
   });
 
-  // 6. Fleet Analytics Summary Table
-  const tableFinalY = (doc as any).lastAutoTable?.finalY || 190;
-  const nextSectionY = tableFinalY + 12;
+  // ==========================================
+  // 6. FLEET MANAGEMENT SYNTHESIS TABLE
+  // ==========================================
+  const tableFinalY = (doc as any).lastAutoTable?.finalY || 185;
+  const nextSectionY = tableFinalY + 9;
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
+  doc.setFontSize(10.5);
   doc.setTextColor(15, 23, 42);
-  doc.text('SYNTHÈSE DE GESTION DU PARC', 14, nextSectionY);
+  doc.text('SYNTHESE DE GESTION DU PARC', 14, nextSectionY);
 
   autoTable(doc, {
-    startY: nextSectionY + 4,
+    startY: nextSectionY + 3.5,
     margin: { left: 14, right: 14 },
-    head: [['Paramètre', 'Détail', 'Recommandation']],
+    head: [['Parametre Flotte', 'Detail Enregistre', 'Recommandation Operationnelle']],
     body: [
-      ['Matricule & Identifiant', `${vehicle.plate} (${vehicle.id})`, 'Conforme au registre de flotte'],
-      ['Kilométrage Enregistré', `${vehicle.mileage.toLocaleString('fr-FR')} km`, 'Planification prochaine révision à 10 000 km'],
-      ['Disponibilité Opérationnelle', vehicle.status === 'active' ? 'Disponible pour missions' : vehicle.status === 'maintenance' ? 'En atelier de maintenance' : 'Inactif', 'Suivi quotidien via plateforme SFTM'],
-      ['Périodicité Contrôle Technique', 'À jour', 'Contrôler l\'assurance et la vignette'],
+      ['[CAR]  Matricule & ID', `${vehicle.plate} (${vehicle.id})`, 'Conforme au registre de flotte'],
+      ['[ODO]  Kilometrage Enregistre', `${cleanFormatNumber(vehicle.mileage)} km`, 'Prochaine revision planifiee a +10 000 km'],
+      ['[STS]  Disponibilite Flotte', vehicle.status === 'active' ? 'Operationnel / En mission' : vehicle.status === 'maintenance' ? 'En maintenance atelier' : 'Inactif', 'Supervision quotidienne SFTM'],
+      ['[DOC]  Controle Technique & Vignette', 'A jour', 'Verifier assurance avant mission'],
     ],
     theme: 'grid',
     headStyles: {
@@ -239,23 +263,25 @@ export function generateVehicleReportPdf(vehicle: MapVehicle) {
       fontSize: 8.5,
     },
     bodyStyles: {
-      fontSize: 8.5,
+      fontSize: 8,
       textColor: [30, 41, 59],
     },
   });
 
-  // 7. Footer & Quality Seal
-  const footerY = pageHeight - 16;
+  // ==========================================
+  // 7. FOOTER & SIGNATURE
+  // ==========================================
+  const footerY = pageHeight - 14;
   doc.setDrawColor(...cardBorder);
-  doc.line(14, footerY - 4, pageWidth - 14, footerY - 4);
+  doc.line(14, footerY - 3, pageWidth - 14, footerY - 3);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(7.5);
   doc.setTextColor(148, 163, 184);
-  doc.text('SFTM - Société de Flotte & Transport Maroc | Système Télématique Haute Précision', 14, footerY);
-  doc.text(`Page 1 / 1  •  Réf : SFTM-V-${vehicle.plate.replace(/\s+/g, '_')}`, pageWidth - 14, footerY, { align: 'right' });
+  doc.text('SFTM - Societe de Flotte & Transport Maroc | Telemetrie GPS Haute Precision', 14, footerY);
+  doc.text(`Page 1 / 1  •  Ref: SFTM-${vehicle.plate.replace(/\s+/g, '_')}`, pageWidth - 14, footerY, { align: 'right' });
 
-  // Save the document with clean filename
+  // Save PDF
   const safePlate = vehicle.plate.replace(/[\\/:*?"<>| ]/g, '_');
   doc.save(`Fiche_Vehicule_${safePlate}_${new Date().toISOString().slice(0, 10)}.pdf`);
 }
