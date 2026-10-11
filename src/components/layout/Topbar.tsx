@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { Bell, Search, Globe, Moon, Sun } from 'lucide-react';
+import { Bell, Search, Globe, Moon, Sun, Palmtree, Bus, PackageCheck, Truck, Package } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useTheme } from '@/components/theme-provider';
 
@@ -19,6 +19,7 @@ export function Topbar() {
   const isRTL = i18n.language === 'ar';
   const { signOut } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const { mode, setMode } = useTheme();
 
   const toggleLanguage = (lang: string) => {
@@ -26,10 +27,53 @@ export function Topbar() {
     document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
   };
 
+  const quickNavModules = [
+    {
+      title: 'Transport Touristique',
+      path: '/transport-touristique',
+      icon: Palmtree,
+      color: 'text-emerald-400',
+      activeBg: 'bg-emerald-500/20 border-emerald-500/40 shadow-[0_0_12px_rgba(16,185,129,0.35)]',
+      hoverBorder: 'hover:border-emerald-500/40 hover:text-emerald-300',
+    },
+    {
+      title: 'Transport Voyageurs',
+      path: '/transport-voyageurs',
+      icon: Bus,
+      color: 'text-sky-400',
+      activeBg: 'bg-sky-500/20 border-sky-500/40 shadow-[0_0_12px_rgba(14,165,233,0.35)]',
+      hoverBorder: 'hover:border-sky-500/40 hover:text-sky-300',
+    },
+    {
+      title: 'Transport TMS',
+      path: '/transport-tms',
+      icon: PackageCheck,
+      color: 'text-indigo-400',
+      activeBg: 'bg-indigo-500/20 border-indigo-500/40 shadow-[0_0_12px_rgba(99,102,241,0.35)]',
+      hoverBorder: 'hover:border-indigo-500/40 hover:text-indigo-300',
+    },
+    {
+      title: 'Transport BTP',
+      path: '/transport-btp',
+      icon: Truck,
+      color: 'text-amber-400',
+      activeBg: 'bg-amber-500/20 border-amber-500/40 shadow-[0_0_12px_rgba(245,158,11,0.35)]',
+      hoverBorder: 'hover:border-amber-500/40 hover:text-amber-300',
+    },
+    {
+      title: 'Missions',
+      path: '/missions',
+      icon: Package,
+      color: 'text-violet-400',
+      activeBg: 'bg-violet-500/20 border-violet-500/40 shadow-[0_0_12px_rgba(139,92,246,0.35)]',
+      hoverBorder: 'hover:border-violet-500/40 hover:text-violet-300',
+    },
+  ];
+
   return (
-    <header className="h-16 border-b border-white/[0.07] bg-[#070B16]/90 backdrop-blur-xl flex items-center justify-between px-6 sticky top-0 z-40">
+    <header className="h-16 border-b border-white/[0.07] bg-[#070B16]/90 backdrop-blur-xl flex items-center justify-between px-4 sm:px-6 sticky top-0 z-40 gap-3">
       {/* Search */}
-      <div className="flex-1 max-w-md">
+      <div className="flex-1 max-w-xs sm:max-w-sm lg:max-w-md">
         <div className="relative">
           <Search className={cn(
             'absolute top-1/2 -translate-y-1/2 w-4 h-4 text-cyan-400/80',
@@ -46,8 +90,38 @@ export function Topbar() {
         </div>
       </div>
 
-      {/* Actions */}
-      <div className="flex items-center gap-2">
+      {/* Actions & Quick Nav Icons */}
+      <div className="flex items-center gap-1.5 sm:gap-2">
+        {/* Quick Nav Circular Icons: Touristique, Voyageurs, TMS, BTP, Missions */}
+        <div className="flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2 py-1 rounded-full bg-white/[0.03] border border-white/[0.06] backdrop-blur-md">
+          {quickNavModules.map((item) => {
+            const Icon = item.icon;
+            const isActive = location.pathname.startsWith(item.path);
+
+            return (
+              <button
+                key={item.path}
+                type="button"
+                onClick={() => navigate(item.path)}
+                title={item.title}
+                className={cn(
+                  'relative group w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center transition-all duration-300 text-slate-300 border',
+                  isActive
+                    ? item.activeBg
+                    : cn('bg-[#0E1626]/80 border-white/[0.08] hover:bg-white/[0.08] hover:scale-105 active:scale-95', item.hoverBorder)
+                )}
+              >
+                <Icon className={cn('w-4 h-4 transition-transform duration-200 group-hover:scale-110', isActive ? item.color : 'text-slate-300 group-hover:' + item.color)} />
+                {isActive && (
+                  <span className="absolute -bottom-0.5 w-1.5 h-1.5 rounded-full bg-cyan-400 shadow-[0_0_6px_#22d3ee]" />
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Separator */}
+        <div className="h-6 w-px bg-white/10 hidden sm:block mx-0.5" />
         {/* Language Toggle */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

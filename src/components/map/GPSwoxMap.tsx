@@ -6,6 +6,19 @@ import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import 'leaflet.markercluster';
 import { Loader2, AlertTriangle } from 'lucide-react';
 import { MarkerDensity } from './MapSettingsModal';
+import { generateVehicleReportPdf } from '@/utils/vehiclePdfGenerator';
+
+// Expose PDF generator globally for Leaflet HTML popups
+if (typeof window !== 'undefined') {
+  (window as any).__downloadVehiclePdf = (vehicleJson: string) => {
+    try {
+      const vehicle = JSON.parse(decodeURIComponent(vehicleJson));
+      generateVehicleReportPdf(vehicle);
+    } catch (e) {
+      console.error('Failed to download vehicle PDF:', e);
+    }
+  };
+}
 
 export type MapLayerType =
   | 'osm'
@@ -685,6 +698,20 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
                 </div>
               ` : ''}
 
+            </div>
+
+            <!-- PDF Download Action Button -->
+            <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.12);">
+              <button
+                type="button"
+                onclick="window.__downloadVehiclePdf && window.__downloadVehiclePdf('${encodeURIComponent(JSON.stringify(vehicle))}')"
+                style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 7px; padding: 7px 12px; background: linear-gradient(135deg, rgba(16, 185, 129, 0.85) 0%, rgba(5, 150, 105, 0.95) 100%); border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 12px; color: #ffffff; font-size: 11px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.35); transition: all 0.2s ease;"
+                onmouseover="this.style.opacity='0.9'; this.style.transform='scale(1.02)';"
+                onmouseout="this.style.opacity='1'; this.style.transform='scale(1)';"
+              >
+                <span style="font-size: 13px;">📄</span>
+                <span>Télécharger Rapport PDF</span>
+              </button>
             </div>
 
           </div>

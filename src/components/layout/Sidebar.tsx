@@ -47,7 +47,6 @@ const navItems = [
   { key: 'liveMap', icon: MapPin, path: '/live-map', module: 'live_map' },
   { key: 'drivers', icon: Users, path: '/drivers', module: 'drivers' },
   { key: 'personnel', icon: UserCog, path: '/personnel', module: 'personnel' },
-  { key: 'rental', icon: KeyRound, path: '/location-vehicules', module: 'rental' },
   { key: 'transportTouristique', icon: Palmtree, path: '/transport-touristique', module: 'transport_touristique' },
   { key: 'transportVoyageurs', icon: Bus, path: '/transport-voyageurs', module: 'transport_voyageurs' },
   { key: 'transportTMS', icon: PackageCheck, path: '/transport-tms', module: 'transport_tms' },
