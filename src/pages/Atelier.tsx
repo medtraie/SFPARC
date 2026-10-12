@@ -749,14 +749,14 @@ export default function Atelier() {
                 <div className="space-y-1.5">
                   <Label>Véhicule de la flotte (si applicable)</Label>
                   <Select
-                    value={orderForm.vehicle_id}
-                    onValueChange={(val) => setOrderForm({ ...orderForm, vehicle_id: val })}
+                    value={orderForm.vehicle_id || 'none'}
+                    onValueChange={(val) => setOrderForm({ ...orderForm, vehicle_id: val === 'none' ? '' : val })}
                   >
                     <SelectTrigger className="bg-[#070B16] border-white/10 text-white rounded-xl">
                       <SelectValue placeholder="Sélectionner véhicule..." />
                     </SelectTrigger>
                     <SelectContent className="bg-[#0E1626] border-white/10 text-white">
-                      <SelectItem value="">Aucun (Équipement externe)</SelectItem>
+                      <SelectItem value="none">Aucun (Équipement externe)</SelectItem>
                       {vehicles.map((v) => (
                         <SelectItem key={v.id} value={v.id}>
                           {v.plate} ({v.brand} {v.model})
