@@ -20,6 +20,7 @@ export interface ModuleSettings {
   citerne: boolean;
   oil: boolean;
   maintenance: boolean;
+  atelier: boolean;
   stock: boolean;
   achats: boolean;
   comptabilite: boolean;
@@ -48,6 +49,7 @@ const DEFAULT_SETTINGS: ModuleSettings = {
   citerne: true,
   oil: true,
   maintenance: true,
+  atelier: true,
   stock: true,
   achats: true,
   comptabilite: true,

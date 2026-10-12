@@ -16,6 +16,7 @@ import PersonnelPage from "./pages/PersonnelPage";
 import Missions from "./pages/Missions";
 import Fuel from "./pages/Fuel";
 import Maintenance from "./pages/Maintenance";
+import Atelier from "./pages/Atelier";
 import Stock from "./pages/Stock";
 import SupplierDetail from "./pages/SupplierDetail";
 import Oil from "./pages/Oil";
@@ -63,6 +64,7 @@ const App = () => (
           <Route path="/fuel" element={<ProtectedRoute><Fuel /></ProtectedRoute>} />
           <Route path="/oil" element={<ProtectedRoute><Oil /></ProtectedRoute>} />
           <Route path="/maintenance" element={<ProtectedRoute><Maintenance /></ProtectedRoute>} />
+          <Route path="/atelier" element={<ProtectedRoute><Atelier /></ProtectedRoute>} />
           <Route path="/stock" element={<ProtectedRoute><Stock /></ProtectedRoute>} />
           <Route path="/stock/suppliers/:id" element={<ProtectedRoute><SupplierDetail /></ProtectedRoute>} />
           <Route path="/transport-btp" element={<ProtectedRoute><TransportBTP /></ProtectedRoute>} />

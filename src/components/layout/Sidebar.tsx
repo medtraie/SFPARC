@@ -27,6 +27,7 @@ import {
   KeyRound,
   Building2,
   ReceiptText,
+  Hammer,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
@@ -47,12 +48,13 @@ const navItems = [
   { key: 'liveMap', icon: MapPin, path: '/live-map', module: 'live_map' },
   { key: 'drivers', icon: Users, path: '/drivers', module: 'drivers' },
   { key: 'personnel', icon: UserCog, path: '/personnel', module: 'personnel' },
+  { key: 'atelier', icon: Hammer, path: '/atelier', module: 'atelier' },
+  { key: 'maintenance', icon: Wrench, path: '/maintenance', module: 'maintenance' },
   { key: 'stock', icon: Boxes, path: '/stock', module: 'stock' },
   { key: 'fuel', icon: Fuel, path: '/fuel', module: 'fuel' },
   { key: 'oil', icon: Droplets, path: '/oil', module: 'oil' },
   { key: 'citerne', icon: Droplets, path: '/citerne', module: 'citerne' },
   { key: 'revisions', icon: FileText, path: '/revisions', module: 'revisions' },
-  { key: 'maintenance', icon: Wrench, path: '/maintenance', module: 'maintenance' },
   { key: 'clients', icon: Users, path: '/clients', module: 'clients' },
   { key: 'societe', icon: Building2, path: '/societe', module: 'societe' },
   { key: 'facturation', icon: ReceiptText, path: '/facturation', module: 'facturation' },
