@@ -77,6 +77,7 @@ export default function LiveMap() {
         battery: v.battery,
         network: v.network,
         distanceToday: v.distanceToday,
+        topSpeedToday: v.topSpeedToday,
         online: v.online,
         lastPosition: v.lastPosition
           ? {
@@ -84,7 +85,10 @@ export default function LiveMap() {
               lng: v.lastPosition.lng,
               city: v.lastPosition.city,
               speed: v.lastPosition.speed,
+              course: v.lastPosition.course ?? 0,
+              altitude: v.lastPosition.altitude,
               timestamp: v.lastPosition.timestamp,
+              stopDuration: v.lastPosition.stopDuration,
             }
           : undefined,
       })),

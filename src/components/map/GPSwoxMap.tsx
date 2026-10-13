@@ -81,13 +81,17 @@ export interface MapVehicle {
   battery?: number | null;
   network?: number | null;
   distanceToday?: number | null;
+  topSpeedToday?: number | null;
   online?: string; // 'online', 'ack', 'offline'
   lastPosition?: {
     lat: number;
     lng: number;
     city: string;
     speed?: number;
+    course?: number;
+    altitude?: number;
     timestamp?: string;
+    stopDuration?: string;
   };
 }
 
@@ -116,23 +120,66 @@ export type VehicleIconStatus = 'moving' | 'stopped' | 'offline' | 'maintenance'
 
 const vehicleIconCache = new Map<string, L.DivIcon>();
 
+// Smooth marker glide animation helper
+const animateMarkerTo = (
+  marker: L.Marker,
+  targetLat: number,
+  targetLng: number,
+  clusterGroup?: L.MarkerClusterGroup | null,
+  durationMs = 900
+) => {
+  const startLatLng = marker.getLatLng();
+  const deltaLat = targetLat - startLatLng.lat;
+  const deltaLng = targetLng - startLatLng.lng;
+  if (Math.abs(deltaLat) < 0.000001 && Math.abs(deltaLng) < 0.000001) return;
+
+  if (Math.abs(deltaLat) > 0.02 || Math.abs(deltaLng) > 0.02) {
+    marker.setLatLng([targetLat, targetLng]);
+    if (clusterGroup && clusterGroup.hasLayer(marker)) {
+      clusterGroup.refreshClusters(marker);
+    }
+    return;
+  }
+
+  const startTime = performance.now();
+  const animate = (currentTime: number) => {
+    const elapsed = currentTime - startTime;
+    const progress = Math.min(elapsed / durationMs, 1);
+    const ease = 1 - Math.pow(1 - progress, 2);
+    const curLat = startLatLng.lat + deltaLat * ease;
+    const curLng = startLatLng.lng + deltaLng * ease;
+    marker.setLatLng([curLat, curLng]);
+    if (progress < 1) {
+      requestAnimationFrame(animate);
+    } else {
+      if (clusterGroup && clusterGroup.hasLayer(marker)) {
+        clusterGroup.refreshClusters(marker);
+      }
+    }
+  };
+  requestAnimationFrame(animate);
+};
+
 const createVehicleIcon = (
   statusKey: VehicleIconStatus,
   isMoving: boolean = false,
   _isOnline: boolean = true,
-  density: MarkerDensity = 'standard'
+  density: MarkerDensity = 'standard',
+  heading: number = 0
 ) => {
-  const iconKey = `${density}-${statusKey}`;
+  const roundedHeading = Math.round(((heading % 360) + 360) % 360);
+  const headingBucket = Math.round(roundedHeading / 5) * 5;
+  const iconKey = `${density}-${statusKey}-${isMoving ? 'm' : 's'}-${headingBucket}`;
   const cachedIcon = vehicleIconCache.get(iconKey);
   if (cachedIcon) return cachedIcon;
 
-  // Proportional 2D scale (100x50 SVG ratio 2:1)
+  // Scaled dimensions to fit cleanly inside road lanes and street networks (ratio 1:2)
   const dims =
     density === 'compact'
-      ? { width: 50, height: 26, anchorX: 25, anchorY: 23 }
+      ? { width: 18, height: 36, anchorX: 9, anchorY: 18 }
       : density === 'large'
-      ? { width: 76, height: 39, anchorX: 38, anchorY: 35 }
-      : { width: 62, height: 32, anchorX: 31, anchorY: 29 };
+      ? { width: 26, height: 52, anchorX: 13, anchorY: 26 }
+      : { width: 22, height: 44, anchorX: 11, anchorY: 22 };
 
   // Theme palettes based on statusKey
   let cabGradStops = `
@@ -142,8 +189,10 @@ const createVehicleIcon = (
   `;
   let strokeColor = '#065f46';
   let glowColor = '#10b981';
-  let glowOpacity = '0.45';
+  let glowOpacity = '0.4';
   let headlightColor = '#ffffff';
+  let arrowColor = '#34d399';
+  let taillightColor = '#ef4444';
 
   if (statusKey === 'offline') {
     cabGradStops = `
@@ -153,8 +202,10 @@ const createVehicleIcon = (
     `;
     strokeColor = '#0f172a';
     glowColor = '#000000';
-    glowOpacity = '0.4';
+    glowOpacity = '0.3';
     headlightColor = '#64748b';
+    arrowColor = '#64748b';
+    taillightColor = '#7f1d1d';
   } else if (statusKey === 'maintenance') {
     cabGradStops = `
       <stop offset="0%" stop-color="#fb923c"/>
@@ -163,8 +214,9 @@ const createVehicleIcon = (
     `;
     strokeColor = '#7c2d12';
     glowColor = '#f97316';
-    glowOpacity = '0.4';
+    glowOpacity = '0.35';
     headlightColor = '#fed7aa';
+    arrowColor = '#f97316';
   } else if (statusKey === 'stopped') {
     cabGradStops = `
       <stop offset="0%" stop-color="#fcd34d"/>
@@ -173,174 +225,125 @@ const createVehicleIcon = (
     `;
     strokeColor = '#78350f';
     glowColor = '#f59e0b';
-    glowOpacity = '0.35';
+    glowOpacity = '0.3';
     headlightColor = '#fef08a';
+    arrowColor = '#f59e0b';
   }
 
   const svgHtml = `
-    <div class="truck-marker-inner" style="width: ${dims.width}px; height: ${dims.height}px;">
-      <svg width="100%" height="100%" viewBox="0 0 100 50" xmlns="http://www.w3.org/2000/svg" style="overflow: visible; display: block;">
-        <defs>
-          <linearGradient id="cabGrad-${iconKey}" x1="0%" y1="0%" x2="100%" y2="100%">
-            ${cabGradStops}
-          </linearGradient>
-          <linearGradient id="chromeGrad-${iconKey}" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stop-color="#e2e8f0"/>
-            <stop offset="50%" stop-color="#94a3b8"/>
-            <stop offset="100%" stop-color="#64748b"/>
-          </linearGradient>
-          <linearGradient id="deckGrad-${iconKey}" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stop-color="#94a3b8"/>
-            <stop offset="100%" stop-color="#475569"/>
-          </linearGradient>
-          <filter id="truckGlow-${iconKey}" x="-20%" y="-20%" width="140%" height="140%">
-            <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="${glowColor}" flood-opacity="${glowOpacity}"/>
-            <feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="#000000" flood-opacity="0.4"/>
-          </filter>
-        </defs>
+    <div class="custom-vehicle-marker" style="width: ${dims.width}px; height: ${dims.height}px;">
+      <div class="truck-rotator" style="width: 100%; height: 100%; transform: rotate(${roundedHeading}deg); transform-origin: center center; transition: transform 0.35s cubic-bezier(0.2, 0, 0.2, 1);">
+        <svg width="100%" height="100%" viewBox="0 0 40 80" xmlns="http://www.w3.org/2000/svg" style="overflow: visible; display: block;">
+          <defs>
+            <linearGradient id="cabGrad-${iconKey}" x1="0%" y1="0%" x2="0%" y2="100%">
+              ${cabGradStops}
+            </linearGradient>
+            <linearGradient id="chromeGrad-${iconKey}" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#e2e8f0"/>
+              <stop offset="50%" stop-color="#94a3b8"/>
+              <stop offset="100%" stop-color="#64748b"/>
+            </linearGradient>
+            <linearGradient id="deckGrad-${iconKey}" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stop-color="#64748b"/>
+              <stop offset="100%" stop-color="#334155"/>
+            </linearGradient>
+            <linearGradient id="beamGrad-${iconKey}" x1="0%" y1="100%" x2="0%" y2="0%">
+              <stop offset="0%" stop-color="rgba(16, 185, 129, 0.45)"/>
+              <stop offset="100%" stop-color="rgba(16, 185, 129, 0)"/>
+            </linearGradient>
+            <filter id="truckGlow-${iconKey}" x="-20%" y="-20%" width="140%" height="140%">
+              <feDropShadow dx="0" dy="1" stdDeviation="1.5" flood-color="${glowColor}" flood-opacity="${glowOpacity}"/>
+              <feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="#000000" flood-opacity="0.35"/>
+            </filter>
+          </defs>
 
-        <!-- Ground Shadow -->
-        <ellipse cx="50" cy="46" rx="46" ry="3" fill="rgba(0,0,0,0.38)"/>
+          <!-- Ground Shadow -->
+          <ellipse cx="20" cy="40" rx="14" ry="36" fill="rgba(0,0,0,0.35)"/>
 
-        ${
-          statusKey === 'moving'
-            ? `
-          <!-- Active Radar Ground Pulse beneath moving truck -->
-          <ellipse cx="20" cy="46" rx="8" ry="2.5" fill="none" stroke="#10b981" stroke-width="1.5" opacity="0.8">
-            <animate attributeName="rx" from="6" to="22" dur="1.4s" repeatCount="indefinite"/>
-            <animate attributeName="opacity" from="0.9" to="0" dur="1.4s" repeatCount="indefinite"/>
-          </ellipse>
-        `
-            : ''
-        }
-
-        <g filter="url(#truckGlow-${iconKey})">
-          <!-- Under-Chassis Structural Beam -->
-          <rect x="32" y="27" width="65" height="5" fill="#1e293b" rx="1"/>
-
-          <!-- Side Protection Safety Rails -->
-          <rect x="35" y="32" width="26" height="1.8" fill="url(#chromeGrad-${iconKey})" rx="0.5"/>
-          <rect x="35" y="35.5" width="26" height="1.8" fill="url(#chromeGrad-${iconKey})" rx="0.5"/>
-          <!-- Vertical posts for rails -->
-          <line x1="38" y1="30" x2="38" y2="38" stroke="#64748b" stroke-width="1.5"/>
-          <line x1="58" y1="30" x2="58" y2="38" stroke="#64748b" stroke-width="1.5"/>
-
-          <!-- Metallic Fuel Tank -->
-          <rect x="40" y="31" width="15" height="7.5" rx="3.5" fill="url(#chromeGrad-${iconKey})" stroke="#475569" stroke-width="0.8"/>
-          <line x1="44" y1="31" x2="44" y2="38.5" stroke="#334155" stroke-width="0.7"/>
-          <line x1="51" y1="31" x2="51" y2="38.5" stroke="#334155" stroke-width="0.7"/>
-
-          <!-- Flatbed Trailer Platform -->
-          <!-- Main Deck -->
-          <path d="M 32 23 L 98 23 L 98 27 L 32 27 Z" fill="url(#deckGrad-${iconKey})" stroke="#334155" stroke-width="0.6"/>
-          <!-- Flatbed Upper Steel Surface Edge -->
-          <line x1="32" y1="23.5" x2="98" y2="23.5" stroke="#f1f5f9" stroke-width="0.8" opacity="0.8"/>
-          <!-- Rear End Upright / Tailboard -->
-          <path d="M 97 23 L 99 23 L 99 37 L 97 37 Z" fill="#334155"/>
-          <!-- Rear Taillights -->
-          <rect x="98" y="30" width="1.2" height="4" fill="${statusKey === 'offline' ? '#991b1b' : '#ef4444'}" rx="0.5"/>
-
-          <!-- Triple Rear Axle Mudguards/Fenders -->
-          <path d="M 61 36 Q 63 30 68 30 L 89 30 Q 94 30 96 36 Z" fill="#1e293b" stroke="#334155" stroke-width="0.8"/>
-
-          <!-- Side Reflectors -->
-          <circle cx="36" cy="25" r="0.9" fill="#f59e0b"/>
-          <circle cx="55" cy="25" r="0.9" fill="#f59e0b"/>
-          <circle cx="75" cy="25" r="0.9" fill="#f59e0b"/>
-          <circle cx="94" cy="25" r="0.9" fill="#f59e0b"/>
-
-          <!-- CABIN (Main Tractor Unit modeled after user's reference) -->
-          <!-- Cab Main Body with Status Gradient -->
-          <path d="
-            M 3 34
-            L 3 22
-            Q 3.5 19 6 15
-            L 9 10
-            Q 11 6 15 6
-            L 31 6
-            Q 33 6 33 9
-            L 33 36
-            L 28 36
-            Q 27 30 20 30
-            Q 13 30 12 36
-            L 3 36
-            Z
-          " fill="url(#cabGrad-${iconKey})" stroke="${strokeColor}" stroke-width="0.8"/>
-
-          <!-- Aerodynamic High-Roof Wind Deflector / Sun Visor Accent -->
-          <path d="M 9 10 Q 11 6 15 6 L 31 6 Q 32.5 6 32.5 8.5 L 14 8.5 Q 11 8.5 9 10 Z" fill="#ffffff" opacity="0.32"/>
-
-          <!-- Windshield & Front Glass -->
-          <path d="M 6 16 L 9.5 9.5 L 14 9.5 L 12 17.5 L 5 17.5 Z" fill="#0f172a" stroke="#1e293b" stroke-width="0.5"/>
-          <!-- Glass Highlight Reflection -->
-          <path d="M 7.5 15.5 L 10 10.5 L 11.5 10.5 L 9 15.5 Z" fill="#38bdf8" opacity="0.5"/>
-
-          <!-- Side Door Window -->
-          <path d="M 13.5 9.5 L 29 9.5 Q 30 9.5 30 11 L 30 17.5 L 13.5 17.5 Z" fill="#0f172a" stroke="#1e293b" stroke-width="0.5"/>
-          <!-- Window Reflection -->
-          <line x1="16" y1="11" x2="22" y2="16.5" stroke="#38bdf8" stroke-width="1" opacity="0.4"/>
-
-          <!-- Rear-view Side Mirror -->
-          <rect x="3.5" y="13" width="1.8" height="6.5" rx="0.8" fill="#0f172a" stroke="#334155" stroke-width="0.5"/>
-          <line x1="5.3" y1="15" x2="7.5" y2="15.5" stroke="#0f172a" stroke-width="0.8"/>
-
-          <!-- Front Bumper & Lower Grille -->
-          <path d="M 2 34 L 12 34 L 12 39.5 L 2 39.5 Z" fill="#1e293b" rx="1"/>
-          <!-- Horizontal Grille Lines -->
-          <line x1="3.5" y1="24" x2="10.5" y2="24" stroke="#0f172a" stroke-width="1"/>
-          <line x1="3.5" y1="27" x2="11" y2="27" stroke="#0f172a" stroke-width="1"/>
-          <line x1="3.5" y1="30" x2="11.5" y2="30" stroke="#0f172a" stroke-width="1"/>
-
-          <!-- Modern LED Headlights -->
-          <path d="M 2 34.5 L 4.5 34.5 L 4.5 37 L 2 36.5 Z" fill="${headlightColor}"/>
           ${
             statusKey === 'moving'
-              ? '<polygon points="2,34.5 -4,32 -4,39 2,37" fill="#34d399" opacity="0.6"/>'
+              ? `
+            <!-- Headlight Light Beam projecting forward onto road -->
+            <polygon points="9,6 -2,-18 42,-18 31,6" fill="url(#beamGrad-${iconKey})"/>
+            <!-- Active motion radar wave -->
+            <ellipse cx="20" cy="8" rx="8" ry="3" fill="none" stroke="#10b981" stroke-width="1.2" opacity="0.8">
+              <animate attributeName="ry" from="2" to="8" dur="1.2s" repeatCount="indefinite"/>
+              <animate attributeName="rx" from="6" to="16" dur="1.2s" repeatCount="indefinite"/>
+              <animate attributeName="opacity" from="0.9" to="0" dur="1.2s" repeatCount="indefinite"/>
+            </ellipse>
+          `
               : ''
           }
 
-          <!-- Front Mudguard Fender Trim -->
-          <path d="M 11.5 36 Q 13 29 20 29 Q 27 29 28.5 36" fill="none" stroke="#0f172a" stroke-width="1.8"/>
+          <g filter="url(#truckGlow-${iconKey})">
+            <!-- Wheels (8 total: Front Steer + 3 Rear Axles) -->
+            <!-- Steer Axle (Front) -->
+            <rect x="2.5" y="14" width="4.5" height="11" rx="2" fill="#0f172a"/>
+            <rect x="33" y="14" width="4.5" height="11" rx="2" fill="#0f172a"/>
+            <!-- Rear Axle 1 -->
+            <rect x="2.5" y="46" width="4.5" height="9.5" rx="2" fill="#0f172a"/>
+            <rect x="33" y="46" width="4.5" height="9.5" rx="2" fill="#0f172a"/>
+            <!-- Rear Axle 2 -->
+            <rect x="2.5" y="56" width="4.5" height="9.5" rx="2" fill="#0f172a"/>
+            <rect x="33" y="56" width="4.5" height="9.5" rx="2" fill="#0f172a"/>
+            <!-- Rear Axle 3 -->
+            <rect x="2.5" y="66" width="4.5" height="9.5" rx="2" fill="#0f172a"/>
+            <rect x="33" y="66" width="4.5" height="9.5" rx="2" fill="#0f172a"/>
 
-          <!-- WHEELS (Front Steer + Triple Rear Axles) -->
-          <!-- Wheel 1: Front -->
-          <g>
-            <circle cx="20" cy="39" r="6" fill="#0f172a" stroke="#334155" stroke-width="0.8"/>
-            <circle cx="20" cy="39" r="3.8" fill="url(#chromeGrad-${iconKey})"/>
-            <circle cx="20" cy="39" r="1.5" fill="#0f172a"/>
-          </g>
+            <!-- Fuel Tank & Side Equipment Box -->
+            <rect x="5" y="29" width="4.5" height="13" rx="1.5" fill="url(#chromeGrad-${iconKey})"/>
+            <rect x="30.5" y="29" width="4.5" height="13" rx="1.5" fill="#334155"/>
 
-          <!-- Wheel 2: Rear Axle 1 -->
-          <g>
-            <circle cx="67" cy="39" r="6" fill="#0f172a" stroke="#334155" stroke-width="0.8"/>
-            <circle cx="67" cy="39" r="3.8" fill="url(#chromeGrad-${iconKey})"/>
-            <circle cx="67" cy="39" r="1.5" fill="#0f172a"/>
-          </g>
+            <!-- Flatbed Platform (Deck / Chassis) -->
+            <rect x="13" y="26" width="14" height="50" fill="#1e293b"/>
+            <rect x="7" y="28" width="26" height="48" rx="2.5" fill="url(#deckGrad-${iconKey})" stroke="#1e293b" stroke-width="0.8"/>
+            <rect x="8.5" y="29.5" width="23" height="45" rx="1.5" fill="none" stroke="#64748b" stroke-width="0.7"/>
+            <!-- Deck cross-ribs -->
+            <line x1="10" y1="36" x2="30" y2="36" stroke="#1e293b" stroke-width="0.7"/>
+            <line x1="10" y1="44" x2="30" y2="44" stroke="#1e293b" stroke-width="0.7"/>
+            <line x1="10" y1="52" x2="30" y2="52" stroke="#1e293b" stroke-width="0.7"/>
+            <line x1="10" y1="60" x2="30" y2="60" stroke="#1e293b" stroke-width="0.7"/>
+            <line x1="10" y1="68" x2="30" y2="68" stroke="#1e293b" stroke-width="0.7"/>
 
-          <!-- Wheel 3: Rear Axle 2 -->
-          <g>
-            <circle cx="78.5" cy="39" r="6" fill="#0f172a" stroke="#334155" stroke-width="0.8"/>
-            <circle cx="78.5" cy="39" r="3.8" fill="url(#chromeGrad-${iconKey})"/>
-            <circle cx="78.5" cy="39" r="1.5" fill="#0f172a"/>
-          </g>
+            <!-- Rear Bumper & LED Taillights -->
+            <rect x="7" y="76" width="26" height="2.5" fill="#0f172a" rx="0.5"/>
+            <rect x="8" y="76" width="4.5" height="2" fill="${taillightColor}" rx="0.5"/>
+            <rect x="27.5" y="76" width="4.5" height="2" fill="${taillightColor}" rx="0.5"/>
 
-          <!-- Wheel 4: Rear Axle 3 -->
-          <g>
-            <circle cx="90" cy="39" r="6" fill="#0f172a" stroke="#334155" stroke-width="0.8"/>
-            <circle cx="90" cy="39" r="3.8" fill="url(#chromeGrad-${iconKey})"/>
-            <circle cx="90" cy="39" r="1.5" fill="#0f172a"/>
+            <!-- CABIN (Main Tractor Unit) -->
+            <path d="M 7 28 L 7 14 Q 7 8 13 6.5 L 27 6.5 Q 33 8 33 14 L 33 28 Z" fill="url(#cabGrad-${iconKey})" stroke="${strokeColor}" stroke-width="0.8"/>
+            <!-- Aerodynamic Sun Visor -->
+            <path d="M 9.5 9 Q 20 7.8 30.5 9 L 30 10.5 Q 20 9.2 10 10.5 Z" fill="#ffffff" opacity="0.35"/>
+            <!-- Windshield Glass -->
+            <path d="M 9.5 15.5 Q 9.5 11 13 10 L 27 10 Q 30.5 11 30.5 15.5 L 29 17.5 L 11 17.5 Z" fill="#0f172a" stroke="#1e293b" stroke-width="0.5"/>
+            <path d="M 12 11 L 18 11 L 16 16.5 L 11 16.5 Z" fill="#38bdf8" opacity="0.45"/>
+            <!-- Roof hatch -->
+            <rect x="14" y="20" width="12" height="5" rx="1.5" fill="#0f172a" opacity="0.25"/>
+
+            <!-- Side Mirrors extending outwards -->
+            <line x1="7" y1="16" x2="3" y2="14" stroke="#334155" stroke-width="1.2"/>
+            <rect x="1.5" y="12" width="2.5" height="4.5" rx="1" fill="#0f172a"/>
+            <line x1="33" y1="16" x2="37" y2="14" stroke="#334155" stroke-width="1.2"/>
+            <rect x="36" y="12" width="2.5" height="4.5" rx="1" fill="#0f172a"/>
+
+            <!-- Front LED Headlights -->
+            <rect x="9" y="5.5" width="4" height="2" rx="0.8" fill="${headlightColor}"/>
+            <rect x="27" y="5.5" width="4" height="2" rx="0.8" fill="${headlightColor}"/>
+
+            <!-- Forward Directional Arrow Indicator -->
+            <path d="M 20 0.5 L 23 4 L 21.5 4 L 21.5 6 L 18.5 6 L 18.5 4 L 17 4 Z" fill="${arrowColor}"/>
           </g>
-        </g>
-      </svg>
+        </svg>
+      </div>
     </div>
   `;
 
   const icon = L.divIcon({
     html: svgHtml,
-    className: 'custom-vehicle-marker',
+    className: 'custom-vehicle-marker-container',
     iconSize: [dims.width, dims.height],
     iconAnchor: [dims.anchorX, dims.anchorY],
-    popupAnchor: [0, -dims.height],
+    popupAnchor: [0, -dims.anchorY - 4],
   });
   vehicleIconCache.set(iconKey, icon);
   return icon;
@@ -386,6 +389,10 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
   const mapRef = useRef<L.Map | null>(null);
   const markersRef = useRef<Map<string, L.Marker>>(new Map());
   const markerStateRef = useRef<Map<string, { iconKey: string; popupKey: string }>>(new Map());
+  const vehicleHeadingsRef = useRef<Map<string, number>>(new Map());
+  const vehiclePositionsRef = useRef<Map<string, { lat: number; lng: number }>>(new Map());
+  const followAnimFrameRef = useRef<number | null>(null);
+  const lastFollowTimeRef = useRef<number>(performance.now());
   const clusterGroupRef = useRef<L.MarkerClusterGroup | null>(null);
   const hasFittedBounds = useRef(false);
   const followIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -653,7 +660,28 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
       } else {
         statusKey = 'stopped';
       }
-      const iconKey = `${markerDensity}-${statusKey}`;
+
+      // Determine heading/bearing
+      let heading = vehicle.lastPosition.course ?? 0;
+      const prevHeading = vehicleHeadingsRef.current.get(vehicle.id);
+      const prevPos = vehiclePositionsRef.current.get(vehicle.id);
+      if (heading === 0 && isMoving && prevPos) {
+        const deltaLat = lat - prevPos.lat;
+        const deltaLng = lng - prevPos.lng;
+        if (Math.abs(deltaLat) > 0.000005 || Math.abs(deltaLng) > 0.000005) {
+          heading = (Math.atan2(deltaLng, deltaLat) * 180 / Math.PI + 360) % 360;
+        } else if (prevHeading !== undefined) {
+          heading = prevHeading;
+        }
+      } else if (heading === 0 && prevHeading !== undefined && !isMoving) {
+        heading = prevHeading;
+      }
+      vehicleHeadingsRef.current.set(vehicle.id, heading);
+      vehiclePositionsRef.current.set(vehicle.id, { lat, lng });
+
+      const roundedHeading = Math.round(((heading % 360) + 360) % 360);
+      const headingBucket = Math.round(roundedHeading / 5) * 5;
+      const iconKey = `${markerDensity}-${statusKey}-${isMoving ? 'm' : 's'}-${headingBucket}`;
 
       if (marker) {
         (marker as any).vehicleData = vehicle;
@@ -662,15 +690,25 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
           Math.abs(currentLatLng.lat - lat) > 0.000001 ||
           Math.abs(currentLatLng.lng - lng) > 0.000001
         ) {
-          marker.setLatLng([lat, lng]);
+          animateMarkerTo(marker, lat, lng, clusterGroupRef.current, 900);
         }
+
+        // Smoothly rotate the rotator element if already in DOM
+        const iconElement = marker.getElement();
+        if (iconElement) {
+          const rotator = iconElement.querySelector('.truck-rotator') as HTMLElement;
+          if (rotator) {
+            rotator.style.transform = `rotate(${roundedHeading}deg)`;
+          }
+        }
+
         const prevState = markerStateRef.current.get(vehicle.id);
         if (!prevState || prevState.iconKey !== iconKey) {
-          marker.setIcon(createVehicleIcon(statusKey, isMoving, isOnline, markerDensity));
+          marker.setIcon(createVehicleIcon(statusKey, isMoving, isOnline, markerDensity, heading));
         }
       } else {
         marker = L.marker([lat, lng], {
-          icon: createVehicleIcon(statusKey, isMoving, isOnline, markerDensity),
+          icon: createVehicleIcon(statusKey, isMoving, isOnline, markerDensity, heading),
         });
         (marker as any).vehicleData = vehicle;
 
@@ -678,12 +716,34 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
           onVehicleSelect?.(vehicle.id);
         });
 
-        if (enableClustering && clusterGroupRef.current) {
-          clusterGroupRef.current.addLayer(marker);
-        } else {
+        currentMarkers.set(vehicle.id, marker);
+      }
+
+      // Layer placement: if following this vehicle, NEVER cluster it!
+      if (followingVehicleId === vehicle.id) {
+        if (clusterGroupRef.current && clusterGroupRef.current.hasLayer(marker)) {
+          clusterGroupRef.current.removeLayer(marker);
+        }
+        if (!map.hasLayer(marker)) {
           marker.addTo(map);
         }
-        currentMarkers.set(vehicle.id, marker);
+        marker.setZIndexOffset(10000);
+      } else if (enableClustering && clusterGroupRef.current) {
+        if (map.hasLayer(marker)) {
+          map.removeLayer(marker);
+        }
+        if (!clusterGroupRef.current.hasLayer(marker)) {
+          clusterGroupRef.current.addLayer(marker);
+        }
+        marker.setZIndexOffset(0);
+      } else {
+        if (clusterGroupRef.current?.hasLayer(marker)) {
+          clusterGroupRef.current.removeLayer(marker);
+        }
+        if (!map.hasLayer(marker)) {
+          marker.addTo(map);
+        }
+        marker.setZIndexOffset(0);
       }
 
       // Visibility based on showPoints
@@ -962,26 +1022,88 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
       clearInterval(followIntervalRef.current);
       followIntervalRef.current = null;
     }
+    if (followAnimFrameRef.current) {
+      cancelAnimationFrame(followAnimFrameRef.current);
+      followAnimFrameRef.current = null;
+    }
 
     if (!mapRef.current || !followingVehicleId) return;
 
-    const updateFollowPosition = () => {
-      const followedVehicle = vehicles.find((v) => v.id === followingVehicleId);
-      if (followedVehicle?.lastPosition && mapRef.current) {
-        mapRef.current.setView(
-          [followedVehicle.lastPosition.lat, followedVehicle.lastPosition.lng],
-          mapRef.current.getZoom(),
-          { animate: true }
-        );
+    const map = mapRef.current;
+    const followedVehicle = vehicles.find((v) => v.id === followingVehicleId);
+    if (!followedVehicle?.lastPosition) return;
+
+    const { lat, lng } = followedVehicle.lastPosition;
+
+    // Immediately zoom to street level (zoom 17 or 18) so streets, lanes and vehicle motion are visible!
+    if (map.getZoom() < 17) {
+      map.flyTo([lat, lng], 17, { duration: 1.2 });
+    } else {
+      map.panTo([lat, lng], { animate: true, duration: 0.6 });
+    }
+
+    const targetMarker = markersRef.current.get(followingVehicleId);
+    if (targetMarker) {
+      targetMarker.setZIndexOffset(10000);
+    }
+
+    lastFollowTimeRef.current = performance.now();
+
+    // Smooth real-time tracking & dead-reckoning animation for moving vehicles
+    const followLoop = () => {
+      const currentFollowed = vehicles.find((v) => v.id === followingVehicleId);
+      const marker = markersRef.current.get(followingVehicleId);
+
+      if (currentFollowed?.lastPosition && marker && mapRef.current) {
+        const speed = currentFollowed.lastPosition.speed || 0;
+        const heading =
+          vehicleHeadingsRef.current.get(followingVehicleId) ??
+          (currentFollowed.lastPosition.course || 0);
+
+        const now = performance.now();
+        const deltaSec = (now - lastFollowTimeRef.current) / 1000;
+        lastFollowTimeRef.current = now;
+
+        if (speed > 0 && deltaSec > 0 && deltaSec < 2) {
+          // Speed in meters per second
+          const speedMps = (speed * 1000) / 3600;
+          const distMeters = speedMps * deltaSec;
+          const rad = (heading * Math.PI) / 180;
+          const curPos = marker.getLatLng();
+
+          // 1 deg lat ≈ 111139 m
+          const deltaLat = (distMeters * Math.cos(rad)) / 111139;
+          const deltaLng =
+            (distMeters * Math.sin(rad)) /
+            (111139 * Math.cos((curPos.lat * Math.PI) / 180));
+
+          const nextLat = curPos.lat + deltaLat;
+          const nextLng = curPos.lng + deltaLng;
+
+          marker.setLatLng([nextLat, nextLng]);
+          mapRef.current.panTo([nextLat, nextLng], { animate: false });
+        } else {
+          // Keep map smoothly centered on the vehicle
+          const curPos = marker.getLatLng();
+          if (mapRef.current.getCenter().distanceTo(curPos) > 30) {
+            mapRef.current.panTo(curPos, { animate: true, duration: 0.5 });
+          }
+        }
       }
+
+      followAnimFrameRef.current = requestAnimationFrame(followLoop);
     };
 
-    updateFollowPosition();
-    followIntervalRef.current = setInterval(updateFollowPosition, 2000);
+    followAnimFrameRef.current = requestAnimationFrame(followLoop);
 
     return () => {
       if (followIntervalRef.current) {
         clearInterval(followIntervalRef.current);
+        followIntervalRef.current = null;
+      }
+      if (followAnimFrameRef.current) {
+        cancelAnimationFrame(followAnimFrameRef.current);
+        followAnimFrameRef.current = null;
       }
     };
   }, [followingVehicleId, vehicles]);
@@ -1097,19 +1219,20 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
           text-shadow: 0 1px 2px rgba(0,0,0,0.6);
         }
 
-        .custom-vehicle-marker {
+        .custom-vehicle-marker-container {
           background: transparent !important;
           border: none !important;
         }
-        .custom-vehicle-marker .truck-marker-inner {
-          transform-origin: 50% 90%;
+        .custom-vehicle-marker-container .truck-rotator {
+          transform-origin: center center;
           cursor: pointer;
-          transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.22s ease;
-          filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.3));
+          filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.35));
+          transition: transform 0.35s cubic-bezier(0.2, 0, 0.2, 1);
         }
-        .custom-vehicle-marker:hover .truck-marker-inner {
-          transform: scale(1.18) translateY(-3px);
-          filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.45));
+        .custom-vehicle-marker-container:hover .truck-rotator {
+          transform: scale(1.22);
+          filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.5));
+          z-index: 999;
         }
 
         .leaflet-popup-content-wrapper {
