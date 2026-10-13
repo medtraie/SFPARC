@@ -112,64 +112,235 @@ interface GPSwoxMapProps {
 // Store vehicle position history for traceurs
 const vehiclePositionHistory = new Map<string, L.LatLng[]>();
 const MAX_TRACEUR_POINTS = 100;
+export type VehicleIconStatus = 'moving' | 'stopped' | 'offline' | 'maintenance';
+
 const vehicleIconCache = new Map<string, L.DivIcon>();
 
 const createVehicleIcon = (
-  _status: string,
+  statusKey: VehicleIconStatus,
   isMoving: boolean = false,
-  isOnline: boolean = true,
+  _isOnline: boolean = true,
   density: MarkerDensity = 'standard'
 ) => {
-  const iconKey = `${density}-${isOnline ? 'online' : 'offline'}-${isMoving ? 'moving' : 'stopped'}`;
+  const iconKey = `${density}-${statusKey}`;
   const cachedIcon = vehicleIconCache.get(iconKey);
   if (cachedIcon) return cachedIcon;
 
-  let color: string;
-  if (!isOnline) {
-    color = '#1a1a1a';
-  } else if (isMoving) {
-    color = '#22c55e';
-  } else {
-    color = '#ef4444';
-  }
-
+  // Proportional 2D scale (100x50 SVG ratio 2:1)
   const dims =
     density === 'compact'
-      ? { width: 26, height: 36, anchorX: 13, anchorY: 36 }
+      ? { width: 50, height: 26, anchorX: 25, anchorY: 23 }
       : density === 'large'
-      ? { width: 38, height: 52, anchorX: 19, anchorY: 52 }
-      : { width: 32, height: 44, anchorX: 16, anchorY: 44 };
+      ? { width: 76, height: 39, anchorX: 38, anchorY: 35 }
+      : { width: 62, height: 32, anchorX: 31, anchorY: 29 };
 
-  const svgIcon = `
-    <svg width="${dims.width}" height="${dims.height}" viewBox="0 0 32 44" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <filter id="shadow-${iconKey}" x="-20%" y="-20%" width="140%" height="140%">
-          <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000000" flood-opacity="0.4"/>
-        </filter>
-      </defs>
-      <path d="M16 0C7.163 0 0 7.163 0 16c0 8.837 16 28 16 28s16-19.163 16-28C32 7.163 24.837 0 16 0z" 
-            fill="${color}" filter="url(#shadow-${iconKey})"/>
-      <circle cx="16" cy="14" r="7" fill="white" opacity="0.95"/>
-      <circle cx="16" cy="14" r="5" fill="${color}" opacity="0.3"/>
-      ${
-        isMoving
-          ? `
-        <circle cx="16" cy="14" r="12" fill="none" stroke="${color}" stroke-width="2" opacity="0.6">
-          <animate attributeName="r" from="10" to="18" dur="1.2s" repeatCount="indefinite"/>
-          <animate attributeName="opacity" from="0.6" to="0" dur="1.2s" repeatCount="indefinite"/>
-        </circle>
-      `
-          : ''
-      }
-    </svg>
+  // Theme palettes based on statusKey
+  let cabGradStops = `
+    <stop offset="0%" stop-color="#34d399"/>
+    <stop offset="60%" stop-color="#10b981"/>
+    <stop offset="100%" stop-color="#047857"/>
+  `;
+  let strokeColor = '#065f46';
+  let glowColor = '#10b981';
+  let glowOpacity = '0.45';
+  let headlightColor = '#ffffff';
+
+  if (statusKey === 'offline') {
+    cabGradStops = `
+      <stop offset="0%" stop-color="#64748b"/>
+      <stop offset="60%" stop-color="#475569"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    `;
+    strokeColor = '#0f172a';
+    glowColor = '#000000';
+    glowOpacity = '0.4';
+    headlightColor = '#64748b';
+  } else if (statusKey === 'maintenance') {
+    cabGradStops = `
+      <stop offset="0%" stop-color="#fb923c"/>
+      <stop offset="60%" stop-color="#f97316"/>
+      <stop offset="100%" stop-color="#c2410c"/>
+    `;
+    strokeColor = '#7c2d12';
+    glowColor = '#f97316';
+    glowOpacity = '0.4';
+    headlightColor = '#fed7aa';
+  } else if (statusKey === 'stopped') {
+    cabGradStops = `
+      <stop offset="0%" stop-color="#fcd34d"/>
+      <stop offset="60%" stop-color="#f59e0b"/>
+      <stop offset="100%" stop-color="#b45309"/>
+    `;
+    strokeColor = '#78350f';
+    glowColor = '#f59e0b';
+    glowOpacity = '0.35';
+    headlightColor = '#fef08a';
+  }
+
+  const svgHtml = `
+    <div class="truck-marker-inner" style="width: ${dims.width}px; height: ${dims.height}px;">
+      <svg width="100%" height="100%" viewBox="0 0 100 50" xmlns="http://www.w3.org/2000/svg" style="overflow: visible; display: block;">
+        <defs>
+          <linearGradient id="cabGrad-${iconKey}" x1="0%" y1="0%" x2="100%" y2="100%">
+            ${cabGradStops}
+          </linearGradient>
+          <linearGradient id="chromeGrad-${iconKey}" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#e2e8f0"/>
+            <stop offset="50%" stop-color="#94a3b8"/>
+            <stop offset="100%" stop-color="#64748b"/>
+          </linearGradient>
+          <linearGradient id="deckGrad-${iconKey}" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#94a3b8"/>
+            <stop offset="100%" stop-color="#475569"/>
+          </linearGradient>
+          <filter id="truckGlow-${iconKey}" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="${glowColor}" flood-opacity="${glowOpacity}"/>
+            <feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="#000000" flood-opacity="0.4"/>
+          </filter>
+        </defs>
+
+        <!-- Ground Shadow -->
+        <ellipse cx="50" cy="46" rx="46" ry="3" fill="rgba(0,0,0,0.38)"/>
+
+        ${
+          statusKey === 'moving'
+            ? `
+          <!-- Active Radar Ground Pulse beneath moving truck -->
+          <ellipse cx="20" cy="46" rx="8" ry="2.5" fill="none" stroke="#10b981" stroke-width="1.5" opacity="0.8">
+            <animate attributeName="rx" from="6" to="22" dur="1.4s" repeatCount="indefinite"/>
+            <animate attributeName="opacity" from="0.9" to="0" dur="1.4s" repeatCount="indefinite"/>
+          </ellipse>
+        `
+            : ''
+        }
+
+        <g filter="url(#truckGlow-${iconKey})">
+          <!-- Under-Chassis Structural Beam -->
+          <rect x="32" y="27" width="65" height="5" fill="#1e293b" rx="1"/>
+
+          <!-- Side Protection Safety Rails -->
+          <rect x="35" y="32" width="26" height="1.8" fill="url(#chromeGrad-${iconKey})" rx="0.5"/>
+          <rect x="35" y="35.5" width="26" height="1.8" fill="url(#chromeGrad-${iconKey})" rx="0.5"/>
+          <!-- Vertical posts for rails -->
+          <line x1="38" y1="30" x2="38" y2="38" stroke="#64748b" stroke-width="1.5"/>
+          <line x1="58" y1="30" x2="58" y2="38" stroke="#64748b" stroke-width="1.5"/>
+
+          <!-- Metallic Fuel Tank -->
+          <rect x="40" y="31" width="15" height="7.5" rx="3.5" fill="url(#chromeGrad-${iconKey})" stroke="#475569" stroke-width="0.8"/>
+          <line x1="44" y1="31" x2="44" y2="38.5" stroke="#334155" stroke-width="0.7"/>
+          <line x1="51" y1="31" x2="51" y2="38.5" stroke="#334155" stroke-width="0.7"/>
+
+          <!-- Flatbed Trailer Platform -->
+          <!-- Main Deck -->
+          <path d="M 32 23 L 98 23 L 98 27 L 32 27 Z" fill="url(#deckGrad-${iconKey})" stroke="#334155" stroke-width="0.6"/>
+          <!-- Flatbed Upper Steel Surface Edge -->
+          <line x1="32" y1="23.5" x2="98" y2="23.5" stroke="#f1f5f9" stroke-width="0.8" opacity="0.8"/>
+          <!-- Rear End Upright / Tailboard -->
+          <path d="M 97 23 L 99 23 L 99 37 L 97 37 Z" fill="#334155"/>
+          <!-- Rear Taillights -->
+          <rect x="98" y="30" width="1.2" height="4" fill="${statusKey === 'offline' ? '#991b1b' : '#ef4444'}" rx="0.5"/>
+
+          <!-- Triple Rear Axle Mudguards/Fenders -->
+          <path d="M 61 36 Q 63 30 68 30 L 89 30 Q 94 30 96 36 Z" fill="#1e293b" stroke="#334155" stroke-width="0.8"/>
+
+          <!-- Side Reflectors -->
+          <circle cx="36" cy="25" r="0.9" fill="#f59e0b"/>
+          <circle cx="55" cy="25" r="0.9" fill="#f59e0b"/>
+          <circle cx="75" cy="25" r="0.9" fill="#f59e0b"/>
+          <circle cx="94" cy="25" r="0.9" fill="#f59e0b"/>
+
+          <!-- CABIN (Main Tractor Unit modeled after user's reference) -->
+          <!-- Cab Main Body with Status Gradient -->
+          <path d="
+            M 3 34
+            L 3 22
+            Q 3.5 19 6 15
+            L 9 10
+            Q 11 6 15 6
+            L 31 6
+            Q 33 6 33 9
+            L 33 36
+            L 28 36
+            Q 27 30 20 30
+            Q 13 30 12 36
+            L 3 36
+            Z
+          " fill="url(#cabGrad-${iconKey})" stroke="${strokeColor}" stroke-width="0.8"/>
+
+          <!-- Aerodynamic High-Roof Wind Deflector / Sun Visor Accent -->
+          <path d="M 9 10 Q 11 6 15 6 L 31 6 Q 32.5 6 32.5 8.5 L 14 8.5 Q 11 8.5 9 10 Z" fill="#ffffff" opacity="0.32"/>
+
+          <!-- Windshield & Front Glass -->
+          <path d="M 6 16 L 9.5 9.5 L 14 9.5 L 12 17.5 L 5 17.5 Z" fill="#0f172a" stroke="#1e293b" stroke-width="0.5"/>
+          <!-- Glass Highlight Reflection -->
+          <path d="M 7.5 15.5 L 10 10.5 L 11.5 10.5 L 9 15.5 Z" fill="#38bdf8" opacity="0.5"/>
+
+          <!-- Side Door Window -->
+          <path d="M 13.5 9.5 L 29 9.5 Q 30 9.5 30 11 L 30 17.5 L 13.5 17.5 Z" fill="#0f172a" stroke="#1e293b" stroke-width="0.5"/>
+          <!-- Window Reflection -->
+          <line x1="16" y1="11" x2="22" y2="16.5" stroke="#38bdf8" stroke-width="1" opacity="0.4"/>
+
+          <!-- Rear-view Side Mirror -->
+          <rect x="3.5" y="13" width="1.8" height="6.5" rx="0.8" fill="#0f172a" stroke="#334155" stroke-width="0.5"/>
+          <line x1="5.3" y1="15" x2="7.5" y2="15.5" stroke="#0f172a" stroke-width="0.8"/>
+
+          <!-- Front Bumper & Lower Grille -->
+          <path d="M 2 34 L 12 34 L 12 39.5 L 2 39.5 Z" fill="#1e293b" rx="1"/>
+          <!-- Horizontal Grille Lines -->
+          <line x1="3.5" y1="24" x2="10.5" y2="24" stroke="#0f172a" stroke-width="1"/>
+          <line x1="3.5" y1="27" x2="11" y2="27" stroke="#0f172a" stroke-width="1"/>
+          <line x1="3.5" y1="30" x2="11.5" y2="30" stroke="#0f172a" stroke-width="1"/>
+
+          <!-- Modern LED Headlights -->
+          <path d="M 2 34.5 L 4.5 34.5 L 4.5 37 L 2 36.5 Z" fill="${headlightColor}"/>
+          ${
+            statusKey === 'moving'
+              ? '<polygon points="2,34.5 -4,32 -4,39 2,37" fill="#34d399" opacity="0.6"/>'
+              : ''
+          }
+
+          <!-- Front Mudguard Fender Trim -->
+          <path d="M 11.5 36 Q 13 29 20 29 Q 27 29 28.5 36" fill="none" stroke="#0f172a" stroke-width="1.8"/>
+
+          <!-- WHEELS (Front Steer + Triple Rear Axles) -->
+          <!-- Wheel 1: Front -->
+          <g>
+            <circle cx="20" cy="39" r="6" fill="#0f172a" stroke="#334155" stroke-width="0.8"/>
+            <circle cx="20" cy="39" r="3.8" fill="url(#chromeGrad-${iconKey})"/>
+            <circle cx="20" cy="39" r="1.5" fill="#0f172a"/>
+          </g>
+
+          <!-- Wheel 2: Rear Axle 1 -->
+          <g>
+            <circle cx="67" cy="39" r="6" fill="#0f172a" stroke="#334155" stroke-width="0.8"/>
+            <circle cx="67" cy="39" r="3.8" fill="url(#chromeGrad-${iconKey})"/>
+            <circle cx="67" cy="39" r="1.5" fill="#0f172a"/>
+          </g>
+
+          <!-- Wheel 3: Rear Axle 2 -->
+          <g>
+            <circle cx="78.5" cy="39" r="6" fill="#0f172a" stroke="#334155" stroke-width="0.8"/>
+            <circle cx="78.5" cy="39" r="3.8" fill="url(#chromeGrad-${iconKey})"/>
+            <circle cx="78.5" cy="39" r="1.5" fill="#0f172a"/>
+          </g>
+
+          <!-- Wheel 4: Rear Axle 3 -->
+          <g>
+            <circle cx="90" cy="39" r="6" fill="#0f172a" stroke="#334155" stroke-width="0.8"/>
+            <circle cx="90" cy="39" r="3.8" fill="url(#chromeGrad-${iconKey})"/>
+            <circle cx="90" cy="39" r="1.5" fill="#0f172a"/>
+          </g>
+        </g>
+      </svg>
+    </div>
   `;
 
   const icon = L.divIcon({
-    html: svgIcon,
+    html: svgHtml,
     className: 'custom-vehicle-marker',
     iconSize: [dims.width, dims.height],
     iconAnchor: [dims.anchorX, dims.anchorY],
-    popupAnchor: [0, -dims.anchorY],
+    popupAnchor: [0, -dims.height],
   });
   vehicleIconCache.set(iconKey, icon);
   return icon;
@@ -472,7 +643,17 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
       const isMoving = (vehicle.lastPosition.speed || 0) > 0;
       let marker = currentMarkers.get(vehicle.id);
       const isOnline = vehicle.online === 'online' || vehicle.online === 'ack';
-      const iconKey = `${markerDensity}-${isOnline ? 'online' : 'offline'}-${isMoving ? 'moving' : 'stopped'}`;
+      let statusKey: VehicleIconStatus = 'stopped';
+      if (!isOnline) {
+        statusKey = 'offline';
+      } else if (vehicle.status === 'maintenance') {
+        statusKey = 'maintenance';
+      } else if (isMoving) {
+        statusKey = 'moving';
+      } else {
+        statusKey = 'stopped';
+      }
+      const iconKey = `${markerDensity}-${statusKey}`;
 
       if (marker) {
         (marker as any).vehicleData = vehicle;
@@ -485,11 +666,11 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
         }
         const prevState = markerStateRef.current.get(vehicle.id);
         if (!prevState || prevState.iconKey !== iconKey) {
-          marker.setIcon(createVehicleIcon(vehicle.status, isMoving, isOnline, markerDensity));
+          marker.setIcon(createVehicleIcon(statusKey, isMoving, isOnline, markerDensity));
         }
       } else {
         marker = L.marker([lat, lng], {
-          icon: createVehicleIcon(vehicle.status, isMoving, isOnline, markerDensity),
+          icon: createVehicleIcon(statusKey, isMoving, isOnline, markerDensity),
         });
         (marker as any).vehicleData = vehicle;
 
@@ -914,6 +1095,21 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
           font-size: 14px;
           font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
           text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+        }
+
+        .custom-vehicle-marker {
+          background: transparent !important;
+          border: none !important;
+        }
+        .custom-vehicle-marker .truck-marker-inner {
+          transform-origin: 50% 90%;
+          cursor: pointer;
+          transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.22s ease;
+          filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.3));
+        }
+        .custom-vehicle-marker:hover .truck-marker-inner {
+          transform: scale(1.18) translateY(-3px);
+          filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.45));
         }
 
         .leaflet-popup-content-wrapper {
