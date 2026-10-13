@@ -574,9 +574,6 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
     }
 
     return () => {
-      if (followIntervalRef.current) {
-        clearInterval(followIntervalRef.current);
-      }
       if (resizeObserverRef.current) {
         resizeObserverRef.current.disconnect();
         resizeObserverRef.current = null;
