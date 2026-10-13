@@ -39,7 +39,8 @@ export default function LiveMap() {
 
   const location = useLocation();
 
-  const { data: vehicles = [], isLoading, error } = useGPSwoxVehicles(10000);
+  const pollInterval = followingVehicleId ? 3000 : 10000;
+  const { data: vehicles = [], isLoading, error } = useGPSwoxVehicles(pollInterval);
 
   useEffect(() => {
     const state = location.state as { vehicleId?: string } | null;

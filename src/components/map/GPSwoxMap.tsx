@@ -118,7 +118,28 @@ const vehiclePositionHistory = new Map<string, L.LatLng[]>();
 const MAX_TRACEUR_POINTS = 100;
 export type VehicleIconStatus = 'moving' | 'stopped' | 'offline' | 'maintenance';
 
-const vehicleIconCache = new Map<string, L.DivIcon>();
+// Great-circle bearing calculation between two GPS points (0-360 deg)
+const computeBearing = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+  const dLng = (lng2 - lng1) * (Math.PI / 180);
+  const phi1 = lat1 * (Math.PI / 180);
+  const phi2 = lat2 * (Math.PI / 180);
+  const y = Math.sin(dLng) * Math.cos(phi2);
+  const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(dLng);
+  const bearing = (Math.atan2(y, x) * 180) / Math.PI;
+  return (bearing + 360) % 360;
+};
+
+// Geodesic distance calculation in meters
+const computeDistanceMeters = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLng = (lng2 - lng1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
 
 // Smooth marker glide animation helper
 const animateMarkerTo = (
@@ -391,11 +412,8 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
   const markerStateRef = useRef<Map<string, { iconKey: string; popupKey: string }>>(new Map());
   const vehicleHeadingsRef = useRef<Map<string, number>>(new Map());
   const vehiclePositionsRef = useRef<Map<string, { lat: number; lng: number }>>(new Map());
-  const followAnimFrameRef = useRef<number | null>(null);
-  const lastFollowTimeRef = useRef<number>(performance.now());
   const clusterGroupRef = useRef<L.MarkerClusterGroup | null>(null);
   const hasFittedBounds = useRef(false);
-  const followIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const traceursRef = useRef<Map<string, L.Polyline>>(new Map());
   const lastSelectedFlyToRef = useRef<string | undefined>(undefined);
@@ -645,11 +663,12 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
     // Add or update markers
     vehicles.forEach((vehicle) => {
       if (!vehicle.lastPosition) return;
-
       const { lat, lng } = vehicle.lastPosition;
-      const isMoving = (vehicle.lastPosition.speed || 0) > 0;
       let marker = currentMarkers.get(vehicle.id);
+      const rawSpeed = vehicle.lastPosition.speed || 0;
       const isOnline = vehicle.online === 'online' || vehicle.online === 'ack';
+      // Stationary GPS jitter is typically 0-2.5 km/h
+      const isMoving = isOnline && rawSpeed >= 3;
       let statusKey: VehicleIconStatus = 'stopped';
       if (!isOnline) {
         statusKey = 'offline';
@@ -665,15 +684,15 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
       let heading = vehicle.lastPosition.course ?? 0;
       const prevHeading = vehicleHeadingsRef.current.get(vehicle.id);
       const prevPos = vehiclePositionsRef.current.get(vehicle.id);
-      if (heading === 0 && isMoving && prevPos) {
-        const deltaLat = lat - prevPos.lat;
-        const deltaLng = lng - prevPos.lng;
-        if (Math.abs(deltaLat) > 0.000005 || Math.abs(deltaLng) > 0.000005) {
-          heading = (Math.atan2(deltaLng, deltaLat) * 180 / Math.PI + 360) % 360;
-        } else if (prevHeading !== undefined) {
+      if (prevPos) {
+        const dist = computeDistanceMeters(prevPos.lat, prevPos.lng, lat, lng);
+        if (dist >= 2.5) {
+          // Real GPS displacement: compute authoritative road vector heading
+          heading = computeBearing(prevPos.lat, prevPos.lng, lat, lng);
+        } else if (heading === 0 && prevHeading !== undefined) {
           heading = prevHeading;
         }
-      } else if (heading === 0 && prevHeading !== undefined && !isMoving) {
+      } else if (heading === 0 && prevHeading !== undefined) {
         heading = prevHeading;
       }
       vehicleHeadingsRef.current.set(vehicle.id, heading);
@@ -1018,15 +1037,6 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
 
   // Handle follow mode
   useEffect(() => {
-    if (followIntervalRef.current) {
-      clearInterval(followIntervalRef.current);
-      followIntervalRef.current = null;
-    }
-    if (followAnimFrameRef.current) {
-      cancelAnimationFrame(followAnimFrameRef.current);
-      followAnimFrameRef.current = null;
-    }
-
     if (!mapRef.current || !followingVehicleId) return;
 
     const map = mapRef.current;
@@ -1035,9 +1045,9 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
 
     const { lat, lng } = followedVehicle.lastPosition;
 
-    // Immediately zoom to street level (zoom 17 or 18) so streets, lanes and vehicle motion are visible!
+    // Center camera on followed vehicle at street level (zoom 17)
     if (map.getZoom() < 17) {
-      map.flyTo([lat, lng], 17, { duration: 1.2 });
+      map.flyTo([lat, lng], 17, { duration: 1.0 });
     } else {
       map.panTo([lat, lng], { animate: true, duration: 0.6 });
     }
@@ -1046,66 +1056,6 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
     if (targetMarker) {
       targetMarker.setZIndexOffset(10000);
     }
-
-    lastFollowTimeRef.current = performance.now();
-
-    // Smooth real-time tracking & dead-reckoning animation for moving vehicles
-    const followLoop = () => {
-      const currentFollowed = vehicles.find((v) => v.id === followingVehicleId);
-      const marker = markersRef.current.get(followingVehicleId);
-
-      if (currentFollowed?.lastPosition && marker && mapRef.current) {
-        const speed = currentFollowed.lastPosition.speed || 0;
-        const heading =
-          vehicleHeadingsRef.current.get(followingVehicleId) ??
-          (currentFollowed.lastPosition.course || 0);
-
-        const now = performance.now();
-        const deltaSec = (now - lastFollowTimeRef.current) / 1000;
-        lastFollowTimeRef.current = now;
-
-        if (speed > 0 && deltaSec > 0 && deltaSec < 2) {
-          // Speed in meters per second
-          const speedMps = (speed * 1000) / 3600;
-          const distMeters = speedMps * deltaSec;
-          const rad = (heading * Math.PI) / 180;
-          const curPos = marker.getLatLng();
-
-          // 1 deg lat ≈ 111139 m
-          const deltaLat = (distMeters * Math.cos(rad)) / 111139;
-          const deltaLng =
-            (distMeters * Math.sin(rad)) /
-            (111139 * Math.cos((curPos.lat * Math.PI) / 180));
-
-          const nextLat = curPos.lat + deltaLat;
-          const nextLng = curPos.lng + deltaLng;
-
-          marker.setLatLng([nextLat, nextLng]);
-          mapRef.current.panTo([nextLat, nextLng], { animate: false });
-        } else {
-          // Keep map smoothly centered on the vehicle
-          const curPos = marker.getLatLng();
-          if (mapRef.current.getCenter().distanceTo(curPos) > 30) {
-            mapRef.current.panTo(curPos, { animate: true, duration: 0.5 });
-          }
-        }
-      }
-
-      followAnimFrameRef.current = requestAnimationFrame(followLoop);
-    };
-
-    followAnimFrameRef.current = requestAnimationFrame(followLoop);
-
-    return () => {
-      if (followIntervalRef.current) {
-        clearInterval(followIntervalRef.current);
-        followIntervalRef.current = null;
-      }
-      if (followAnimFrameRef.current) {
-        cancelAnimationFrame(followAnimFrameRef.current);
-        followAnimFrameRef.current = null;
-      }
-    };
   }, [followingVehicleId, vehicles]);
 
   // Handle traceurs
@@ -1222,17 +1172,17 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
         .custom-vehicle-marker-container {
           background: transparent !important;
           border: none !important;
+          transition: filter 0.2s ease;
+        }
+        .custom-vehicle-marker-container:hover {
+          filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.55));
+          z-index: 9999 !important;
         }
         .custom-vehicle-marker-container .truck-rotator {
           transform-origin: center center;
           cursor: pointer;
           filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.35));
           transition: transform 0.35s cubic-bezier(0.2, 0, 0.2, 1);
-        }
-        .custom-vehicle-marker-container:hover .truck-rotator {
-          transform: scale(1.22);
-          filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.5));
-          z-index: 999;
         }
 
         .leaflet-popup-content-wrapper {
