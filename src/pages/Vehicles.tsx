@@ -27,6 +27,47 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  useVehicleVisualType,
+  VEHICLE_VISUAL_TYPES,
+  VehicleVisualType,
+} from '@/hooks/useVehicleTypes';
+
+function VehicleTypeModalRow({ vehicle }: { vehicle: any }) {
+  const { type, setType } = useVehicleVisualType(vehicle.id, vehicle);
+  return (
+    <div className="rounded-xl border border-cyan-500/30 bg-cyan-950/20 p-3 shadow-inner md:col-span-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-wider text-cyan-400">Modèle Carte Live (2D)</p>
+          <p className="text-xs text-slate-300 mt-0.5">Sélectionnez l'icône 2D pour le suivi sur la carte Live</p>
+        </div>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {(Object.keys(VEHICLE_VISUAL_TYPES) as VehicleVisualType[]).map((vKey) => {
+            const item = VEHICLE_VISUAL_TYPES[vKey];
+            const isSelected = type === vKey;
+            return (
+              <button
+                key={vKey}
+                type="button"
+                onClick={() => setType(vKey)}
+                className={cn(
+                  'px-3 py-1.5 rounded-lg border text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer',
+                  isSelected
+                    ? 'bg-cyan-500/25 border-cyan-400 text-cyan-200 shadow-[0_0_12px_rgba(85,214,232,0.35)]'
+                    : 'bg-[#0E1626] border-white/10 text-slate-400 hover:text-slate-200 hover:border-white/20'
+                )}
+              >
+                <span className="text-sm leading-none">{vKey === 'car' ? '🚗' : vKey === 'truck_flatbed' ? '🚛' : '🚚'}</span>
+                <span>{item.labelFr}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function Vehicles() {
   const { i18n } = useTranslation();
@@ -483,6 +524,7 @@ export default function Vehicles() {
           </DialogHeader>
           {detailsVehicle && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm mt-2">
+              <VehicleTypeModalRow vehicle={detailsVehicle} />
               <div className="rounded-xl border border-white/[0.08] bg-[#0E1626] p-3 shadow-inner">
                 <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Plaque d'immatriculation</p>
                 <p className="font-mono font-extrabold text-base text-white mt-0.5">{detailsVehicle.plate}</p>

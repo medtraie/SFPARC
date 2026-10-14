@@ -7,6 +7,11 @@ import 'leaflet.markercluster';
 import { Loader2, AlertTriangle } from 'lucide-react';
 import { MarkerDensity } from './MapSettingsModal';
 import { generateVehicleReportPdf } from '@/utils/vehiclePdfGenerator';
+import {
+  VehicleVisualType,
+  useVehicleTypesMap,
+  getVehicleVisualType,
+} from '@/hooks/useVehicleTypes';
 
 // Expose PDF generator globally for Leaflet HTML popups
 if (typeof window !== 'undefined') {
@@ -187,21 +192,40 @@ const createVehicleIcon = (
   isMoving: boolean = false,
   _isOnline: boolean = true,
   density: MarkerDensity = 'standard',
-  heading: number = 0
+  heading: number = 0,
+  vehicleType: VehicleVisualType = 'truck_box'
 ) => {
   const roundedHeading = Math.round(((heading % 360) + 360) % 360);
   const headingBucket = Math.round(roundedHeading / 5) * 5;
-  const iconKey = `${density}-${statusKey}-${isMoving ? 'm' : 's'}-${headingBucket}`;
+  const iconKey = `${vehicleType}-${density}-${statusKey}-${isMoving ? 'm' : 's'}-${headingBucket}`;
   const cachedIcon = vehicleIconCache.get(iconKey);
   if (cachedIcon) return cachedIcon;
 
-  // Scaled dimensions to fit cleanly inside road lanes and street networks (ratio 1:2)
-  const dims =
-    density === 'compact'
-      ? { width: 18, height: 36, anchorX: 9, anchorY: 18 }
-      : density === 'large'
-      ? { width: 26, height: 52, anchorX: 13, anchorY: 26 }
-      : { width: 22, height: 44, anchorX: 11, anchorY: 22 };
+  // Scaled dimensions depending on vehicle type & density
+  let dims = { width: 22, height: 46, anchorX: 11, anchorY: 23 };
+  if (vehicleType === 'car') {
+    dims =
+      density === 'compact'
+        ? { width: 16, height: 34, anchorX: 8, anchorY: 17 }
+        : density === 'large'
+        ? { width: 23, height: 48, anchorX: 11.5, anchorY: 24 }
+        : { width: 19, height: 40, anchorX: 9.5, anchorY: 20 };
+  } else if (vehicleType === 'truck_flatbed') {
+    dims =
+      density === 'compact'
+        ? { width: 18, height: 36, anchorX: 9, anchorY: 18 }
+        : density === 'large'
+        ? { width: 26, height: 52, anchorX: 13, anchorY: 26 }
+        : { width: 22, height: 44, anchorX: 11, anchorY: 22 };
+  } else {
+    // truck_box
+    dims =
+      density === 'compact'
+        ? { width: 18, height: 38, anchorX: 9, anchorY: 19 }
+        : density === 'large'
+        ? { width: 26, height: 55, anchorX: 13, anchorY: 27 }
+        : { width: 22, height: 46, anchorX: 11, anchorY: 23 };
+  }
 
   // Theme palettes based on statusKey
   let cabGradStops = `
@@ -211,7 +235,7 @@ const createVehicleIcon = (
   `;
   let strokeColor = '#065f46';
   let glowColor = '#10b981';
-  let glowOpacity = '0.4';
+  let glowOpacity = '0.45';
   let headlightColor = '#ffffff';
   let arrowColor = '#34d399';
   let taillightColor = '#ef4444';
@@ -236,7 +260,7 @@ const createVehicleIcon = (
     `;
     strokeColor = '#7c2d12';
     glowColor = '#f97316';
-    glowOpacity = '0.35';
+    glowOpacity = '0.4';
     headlightColor = '#fed7aa';
     arrowColor = '#f97316';
   } else if (statusKey === 'stopped') {
@@ -247,115 +271,334 @@ const createVehicleIcon = (
     `;
     strokeColor = '#78350f';
     glowColor = '#f59e0b';
-    glowOpacity = '0.3';
+    glowOpacity = '0.35';
     headlightColor = '#fef08a';
     arrowColor = '#f59e0b';
+  }
+
+  let vehicleInnerSvg = '';
+
+  if (vehicleType === 'car') {
+    // -----------------------------------------------------------------
+    // 2D PASSENGER CAR / BERLINE / SUV (VUE DE DESSUS - IMAGE 2)
+    // -----------------------------------------------------------------
+    vehicleInnerSvg = `
+      <svg width="100%" height="100%" viewBox="0 0 36 76" xmlns="http://www.w3.org/2000/svg" style="overflow: visible; display: block;">
+        <defs>
+          <linearGradient id="carBodyGrad-${iconKey}" x1="0%" y1="0%" x2="0%" y2="100%">
+            ${cabGradStops}
+          </linearGradient>
+          <linearGradient id="carRoofGrad-${iconKey}" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#ffffff" stop-opacity="0.25"/>
+            <stop offset="50%" stop-color="#ffffff" stop-opacity="0.05"/>
+            <stop offset="100%" stop-color="#000000" stop-opacity="0.2"/>
+          </linearGradient>
+          <linearGradient id="beamGrad-${iconKey}" x1="0%" y1="100%" x2="0%" y2="0%">
+            <stop offset="0%" stop-color="rgba(16, 185, 129, 0.45)"/>
+            <stop offset="100%" stop-color="rgba(16, 185, 129, 0)"/>
+          </linearGradient>
+          <filter id="truckGlow-${iconKey}" x="-25%" y="-20%" width="150%" height="140%">
+            <feDropShadow dx="0" dy="1.5" stdDeviation="1.5" flood-color="${glowColor}" flood-opacity="${glowOpacity}"/>
+            <feDropShadow dx="0" dy="1.5" stdDeviation="1" flood-color="#000000" flood-opacity="0.35"/>
+          </filter>
+        </defs>
+
+        <!-- Ground Shadow -->
+        <ellipse cx="18" cy="38" rx="14" ry="34" fill="rgba(0,0,0,0.35)"/>
+
+        ${
+          statusKey === 'moving'
+            ? `
+          <!-- Headlight Light Beam projecting forward onto road -->
+          <polygon points="7,6 -3,-20 39,-20 29,6" fill="url(#beamGrad-${iconKey})"/>
+          <ellipse cx="18" cy="7" rx="8" ry="3" fill="none" stroke="#10b981" stroke-width="1.2" opacity="0.8">
+            <animate attributeName="ry" from="2" to="8" dur="1.2s" repeatCount="indefinite"/>
+            <animate attributeName="rx" from="5" to="14" dur="1.2s" repeatCount="indefinite"/>
+            <animate attributeName="opacity" from="0.9" to="0" dur="1.2s" repeatCount="indefinite"/>
+          </ellipse>
+        `
+            : ''
+        }
+
+        <g filter="url(#truckGlow-${iconKey})">
+          <!-- 4 Wheels tucked into body contours -->
+          <rect x="2.5" y="14" width="4" height="9" rx="1.5" fill="#0f172a"/>
+          <rect x="29.5" y="14" width="4" height="9" rx="1.5" fill="#0f172a"/>
+          <rect x="2.5" y="49" width="4" height="9" rx="1.5" fill="#0f172a"/>
+          <rect x="29.5" y="49" width="4" height="9" rx="1.5" fill="#0f172a"/>
+
+          <!-- Car Aerodynamic Body Contour matching Image 2 -->
+          <path d="M 11 6 Q 18 4.8 25 6 Q 31 7 31.5 14 L 32 24 Q 32.5 30 32 38 L 32.5 50 Q 33 58 31 66 Q 28 72 18 72 Q 8 72 5 66 Q 3 58 3.5 50 L 4 38 Q 3.5 30 4 24 L 4.5 14 Q 5 7 11 6 Z" fill="url(#carBodyGrad-${iconKey})" stroke="${strokeColor}" stroke-width="0.8"/>
+
+          <!-- Hood Sculpt Lines & Front Grille -->
+          <path d="M 10 9 Q 18 11.5 26 9" fill="none" stroke="#ffffff" stroke-width="0.6" opacity="0.4"/>
+          <path d="M 11 11 L 12.5 21" stroke="#000000" stroke-width="0.5" opacity="0.25"/>
+          <path d="M 25 11 L 23.5 21" stroke="#000000" stroke-width="0.5" opacity="0.25"/>
+          <rect x="15.5" y="6" width="5" height="1.5" rx="0.5" fill="#0f172a" opacity="0.6"/>
+
+          <!-- Front Windshield -->
+          <path d="M 8 22 Q 18 19.5 28 22 L 25.8 33 Q 18 31.2 10.2 33 Z" fill="#0f172a" stroke="#1e293b" stroke-width="0.5"/>
+          <path d="M 10 22.5 L 16 21 L 14 32 L 9.5 32 Z" fill="#38bdf8" opacity="0.4"/>
+          <!-- Windshield Wipers -->
+          <line x1="12" y1="23" x2="17" y2="22" stroke="#475569" stroke-width="0.6"/>
+          <line x1="19" y1="23" x2="24" y2="22" stroke="#475569" stroke-width="0.6"/>
+
+          <!-- Side Windows & Roof Pillars -->
+          <path d="M 6.8 34.5 L 9.8 34.2 L 10.5 51.5 L 7.2 50.5 Q 6.4 42 6.8 34.5 Z" fill="#0f172a"/>
+          <line x1="6.8" y1="42.5" x2="10.2" y2="42.5" stroke="#334155" stroke-width="0.8"/>
+          <path d="M 29.2 34.5 L 26.2 34.2 L 25.5 51.5 L 28.8 50.5 Q 29.6 42 29.2 34.5 Z" fill="#0f172a"/>
+          <line x1="29.2" y1="42.5" x2="25.8" y2="42.5" stroke="#334155" stroke-width="0.8"/>
+
+          <!-- Roof Surface with Subtle Sheen -->
+          <path d="M 9.8 34 L 26.2 34 L 25.5 51.5 L 10.5 51.5 Z" fill="url(#carBodyGrad-${iconKey})" stroke="${strokeColor}" stroke-width="0.5"/>
+          <path d="M 9.8 34 L 26.2 34 L 25.5 51.5 L 10.5 51.5 Z" fill="url(#carRoofGrad-${iconKey})"/>
+
+          <!-- Sunroof / Glass Roof Panel -->
+          <rect x="12" y="35.5" width="12" height="12.5" rx="1.5" fill="#0b1322" stroke="#334155" stroke-width="0.6"/>
+          <!-- Shark-Fin Antenna -->
+          <path d="M 18 49.5 L 18.8 52.5 L 17.2 52.5 Z" fill="#0f172a"/>
+
+          <!-- Rear Window -->
+          <path d="M 10.2 52.5 Q 18 51.2 25.8 52.5 L 24.5 61.5 Q 18 63 11.5 61.5 Z" fill="#0f172a" stroke="#1e293b" stroke-width="0.5"/>
+          <line x1="18" y1="58" x2="21.5" y2="55.5" stroke="#475569" stroke-width="0.5"/>
+
+          <!-- Rear Trunk / Spoiler Lip -->
+          <path d="M 11 63 Q 18 64.2 25 63 L 24.5 65.5 Q 18 66.5 11.5 65.5 Z" fill="#ffffff" opacity="0.35"/>
+
+          <!-- Wrap-Around Taillights matching Image 2 -->
+          <path d="M 5 61.5 Q 4.5 67 9.5 67.5 L 9.5 65.5 Q 6.5 65 6.5 61.5 Z" fill="${taillightColor}"/>
+          <path d="M 31 61.5 Q 31.5 67 26.5 67.5 L 26.5 65.5 Q 29.5 65 29.5 61.5 Z" fill="${taillightColor}"/>
+          <rect x="15" y="62" width="6" height="1" rx="0.4" fill="${taillightColor}"/>
+
+          <!-- Aerodynamic Side Mirrors -->
+          <line x1="7" y1="27" x2="2.5" y2="29" stroke="#334155" stroke-width="1.2"/>
+          <rect x="1.5" y="27.5" width="2" height="4" rx="0.8" fill="#0f172a"/>
+          <line x1="29" y1="27" x2="33.5" y2="29" stroke="#334155" stroke-width="1.2"/>
+          <rect x="32.5" y="27.5" width="2" height="4" rx="0.8" fill="#0f172a"/>
+
+          <!-- Front LED Headlights -->
+          <polygon points="7,7 12,6.5 11,9.5 6.5,9" fill="${headlightColor}"/>
+          <polygon points="29,7 24,6.5 25,9.5 29.5,9" fill="${headlightColor}"/>
+
+          <!-- Forward Direction Indicator Arrow -->
+          <path d="M 18 0.5 L 21 4 L 19.5 4 L 19.5 6 L 16.5 6 L 16.5 4 L 15 4 Z" fill="${arrowColor}"/>
+        </g>
+      </svg>
+    `;
+  } else if (vehicleType === 'truck_flatbed') {
+    // -----------------------------------------------------------------
+    // 2D FLATBED TRUCK / CHÂSSIS PLATEAU (CAMION PLATEAU)
+    // -----------------------------------------------------------------
+    vehicleInnerSvg = `
+      <svg width="100%" height="100%" viewBox="0 0 40 80" xmlns="http://www.w3.org/2000/svg" style="overflow: visible; display: block;">
+        <defs>
+          <linearGradient id="cabGrad-${iconKey}" x1="0%" y1="0%" x2="0%" y2="100%">
+            ${cabGradStops}
+          </linearGradient>
+          <linearGradient id="chromeGrad-${iconKey}" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#e2e8f0"/>
+            <stop offset="50%" stop-color="#94a3b8"/>
+            <stop offset="100%" stop-color="#64748b"/>
+          </linearGradient>
+          <linearGradient id="deckGrad-${iconKey}" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#64748b"/>
+            <stop offset="100%" stop-color="#334155"/>
+          </linearGradient>
+          <linearGradient id="beamGrad-${iconKey}" x1="0%" y1="100%" x2="0%" y2="0%">
+            <stop offset="0%" stop-color="rgba(16, 185, 129, 0.45)"/>
+            <stop offset="100%" stop-color="rgba(16, 185, 129, 0)"/>
+          </linearGradient>
+          <filter id="truckGlow-${iconKey}" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="1" stdDeviation="1.5" flood-color="${glowColor}" flood-opacity="${glowOpacity}"/>
+            <feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="#000000" flood-opacity="0.35"/>
+          </filter>
+        </defs>
+
+        <!-- Ground Shadow -->
+        <ellipse cx="20" cy="40" rx="14" ry="36" fill="rgba(0,0,0,0.35)"/>
+
+        ${
+          statusKey === 'moving'
+            ? `
+          <!-- Headlight Light Beam projecting forward onto road -->
+          <polygon points="9,6 -2,-18 42,-18 31,6" fill="url(#beamGrad-${iconKey})"/>
+          <ellipse cx="20" cy="8" rx="8" ry="3" fill="none" stroke="#10b981" stroke-width="1.2" opacity="0.8">
+            <animate attributeName="ry" from="2" to="8" dur="1.2s" repeatCount="indefinite"/>
+            <animate attributeName="rx" from="6" to="16" dur="1.2s" repeatCount="indefinite"/>
+            <animate attributeName="opacity" from="0.9" to="0" dur="1.2s" repeatCount="indefinite"/>
+          </ellipse>
+        `
+            : ''
+        }
+
+        <g filter="url(#truckGlow-${iconKey})">
+          <!-- Wheels (8 total: Front Steer + 3 Rear Axles) -->
+          <rect x="2.5" y="14" width="4.5" height="11" rx="2" fill="#0f172a"/>
+          <rect x="33" y="14" width="4.5" height="11" rx="2" fill="#0f172a"/>
+          <rect x="2.5" y="46" width="4.5" height="9.5" rx="2" fill="#0f172a"/>
+          <rect x="33" y="46" width="4.5" height="9.5" rx="2" fill="#0f172a"/>
+          <rect x="2.5" y="56" width="4.5" height="9.5" rx="2" fill="#0f172a"/>
+          <rect x="33" y="56" width="4.5" height="9.5" rx="2" fill="#0f172a"/>
+          <rect x="2.5" y="66" width="4.5" height="9.5" rx="2" fill="#0f172a"/>
+          <rect x="33" y="66" width="4.5" height="9.5" rx="2" fill="#0f172a"/>
+
+          <!-- Fuel Tank & Side Equipment Box -->
+          <rect x="5" y="29" width="4.5" height="13" rx="1.5" fill="url(#chromeGrad-${iconKey})"/>
+          <rect x="30.5" y="29" width="4.5" height="13" rx="1.5" fill="#334155"/>
+
+          <!-- Flatbed Platform (Deck / Chassis) -->
+          <rect x="13" y="26" width="14" height="50" fill="#1e293b"/>
+          <rect x="7" y="28" width="26" height="48" rx="2.5" fill="url(#deckGrad-${iconKey})" stroke="#1e293b" stroke-width="0.8"/>
+          <rect x="8.5" y="29.5" width="23" height="45" rx="1.5" fill="none" stroke="#64748b" stroke-width="0.7"/>
+          <line x1="10" y1="36" x2="30" y2="36" stroke="#1e293b" stroke-width="0.7"/>
+          <line x1="10" y1="44" x2="30" y2="44" stroke="#1e293b" stroke-width="0.7"/>
+          <line x1="10" y1="52" x2="30" y2="52" stroke="#1e293b" stroke-width="0.7"/>
+          <line x1="10" y1="60" x2="30" y2="60" stroke="#1e293b" stroke-width="0.7"/>
+          <line x1="10" y1="68" x2="30" y2="68" stroke="#1e293b" stroke-width="0.7"/>
+
+          <!-- Rear Bumper & LED Taillights -->
+          <rect x="7" y="76" width="26" height="2.5" fill="#0f172a" rx="0.5"/>
+          <rect x="8" y="76" width="4.5" height="2" fill="${taillightColor}" rx="0.5"/>
+          <rect x="27.5" y="76" width="4.5" height="2" fill="${taillightColor}" rx="0.5"/>
+
+          <!-- CABIN (Main Tractor Unit) -->
+          <path d="M 7 28 L 7 14 Q 7 8 13 6.5 L 27 6.5 Q 33 8 33 14 L 33 28 Z" fill="url(#cabGrad-${iconKey})" stroke="${strokeColor}" stroke-width="0.8"/>
+          <path d="M 9.5 9 Q 20 7.8 30.5 9 L 30 10.5 Q 20 9.2 10 10.5 Z" fill="#ffffff" opacity="0.35"/>
+          <path d="M 9.5 15.5 Q 9.5 11 13 10 L 27 10 Q 30.5 11 30.5 15.5 L 29 17.5 L 11 17.5 Z" fill="#0f172a" stroke="#1e293b" stroke-width="0.5"/>
+          <path d="M 12 11 L 18 11 L 16 16.5 L 11 16.5 Z" fill="#38bdf8" opacity="0.45"/>
+          <rect x="14" y="20" width="12" height="5" rx="1.5" fill="#0f172a" opacity="0.25"/>
+
+          <!-- Side Mirrors -->
+          <line x1="7" y1="16" x2="3" y2="14" stroke="#334155" stroke-width="1.2"/>
+          <rect x="1.5" y="12" width="2.5" height="4.5" rx="1" fill="#0f172a"/>
+          <line x1="33" y1="16" x2="37" y2="14" stroke="#334155" stroke-width="1.2"/>
+          <rect x="36" y="12" width="2.5" height="4.5" rx="1" fill="#0f172a"/>
+
+          <!-- Front LED Headlights -->
+          <rect x="9" y="5.5" width="4" height="2" rx="0.8" fill="${headlightColor}"/>
+          <rect x="27" y="5.5" width="4" height="2" rx="0.8" fill="${headlightColor}"/>
+
+          <!-- Forward Directional Arrow Indicator -->
+          <path d="M 20 0.5 L 23 4 L 21.5 4 L 21.5 6 L 18.5 6 L 18.5 4 L 17 4 Z" fill="${arrowColor}"/>
+        </g>
+      </svg>
+    `;
+  } else {
+    // -----------------------------------------------------------------
+    // 2D BOX TRUCK / CAMION FOURGON DE FRET (VUE DE DESSUS - IMAGE 1)
+    // -----------------------------------------------------------------
+    vehicleInnerSvg = `
+      <svg width="100%" height="100%" viewBox="0 0 40 84" xmlns="http://www.w3.org/2000/svg" style="overflow: visible; display: block;">
+        <defs>
+          <linearGradient id="cabGrad-${iconKey}" x1="0%" y1="0%" x2="0%" y2="100%">
+            ${cabGradStops}
+          </linearGradient>
+          <linearGradient id="boxGrad-${iconKey}" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#cbd5e1"/>
+            <stop offset="25%" stop-color="#f8fafc"/>
+            <stop offset="75%" stop-color="#f1f5f9"/>
+            <stop offset="100%" stop-color="#94a3b8"/>
+          </linearGradient>
+          <linearGradient id="beamGrad-${iconKey}" x1="0%" y1="100%" x2="0%" y2="0%">
+            <stop offset="0%" stop-color="rgba(16, 185, 129, 0.45)"/>
+            <stop offset="100%" stop-color="rgba(16, 185, 129, 0)"/>
+          </linearGradient>
+          <filter id="truckGlow-${iconKey}" x="-25%" y="-20%" width="150%" height="140%">
+            <feDropShadow dx="0" dy="1.5" stdDeviation="1.8" flood-color="${glowColor}" flood-opacity="${glowOpacity}"/>
+            <feDropShadow dx="0" dy="1.5" stdDeviation="1.2" flood-color="#000000" flood-opacity="0.38"/>
+          </filter>
+        </defs>
+
+        <!-- Ground Shadow -->
+        <ellipse cx="20" cy="42" rx="15" ry="38" fill="rgba(0,0,0,0.38)"/>
+
+        ${
+          statusKey === 'moving'
+            ? `
+          <!-- Headlight Light Beam projecting forward onto road -->
+          <polygon points="9,6 -2,-20 42,-20 31,6" fill="url(#beamGrad-${iconKey})"/>
+          <ellipse cx="20" cy="8" rx="8" ry="3" fill="none" stroke="#10b981" stroke-width="1.2" opacity="0.8">
+            <animate attributeName="ry" from="2" to="8" dur="1.2s" repeatCount="indefinite"/>
+            <animate attributeName="rx" from="6" to="16" dur="1.2s" repeatCount="indefinite"/>
+            <animate attributeName="opacity" from="0.9" to="0" dur="1.2s" repeatCount="indefinite"/>
+          </ellipse>
+        `
+            : ''
+        }
+
+        <g filter="url(#truckGlow-${iconKey})">
+          <!-- Steer Wheels (Front) -->
+          <rect x="2.5" y="14" width="4.5" height="11" rx="2" fill="#0f172a"/>
+          <rect x="33" y="14" width="4.5" height="11" rx="2" fill="#0f172a"/>
+
+          <!-- Rear Dual Tandem Wheels (Axle 1 & Axle 2) -->
+          <rect x="2" y="52" width="4.5" height="10" rx="2" fill="#0f172a"/>
+          <rect x="33.5" y="52" width="4.5" height="10" rx="2" fill="#0f172a"/>
+          <rect x="2" y="64" width="4.5" height="10" rx="2" fill="#0f172a"/>
+          <rect x="33.5" y="64" width="4.5" height="10" rx="2" fill="#0f172a"/>
+
+          <!-- Side Underrun Protection Guards (Barres anti-encastrement) -->
+          <rect x="3" y="32" width="3.5" height="16" rx="1" fill="#334155"/>
+          <line x1="3" y1="36" x2="6.5" y2="36" stroke="#94a3b8" stroke-width="1"/>
+          <line x1="3" y1="42" x2="6.5" y2="42" stroke="#94a3b8" stroke-width="1"/>
+          <rect x="33.5" y="32" width="3.5" height="16" rx="1" fill="#334155"/>
+          <line x1="33.5" y1="36" x2="37" y2="36" stroke="#94a3b8" stroke-width="1"/>
+          <line x1="33.5" y1="42" x2="37" y2="42" stroke="#94a3b8" stroke-width="1"/>
+
+          <!-- CLOSED FREIGHT CARGO BOX (Caisse Fourgon) -->
+          <rect x="6" y="27" width="28" height="52" rx="2" fill="url(#boxGrad-${iconKey})" stroke="#334155" stroke-width="0.8"/>
+          <!-- Box Front Corner Joint -->
+          <path d="M 6 29 Q 12 26 20 26 Q 28 26 34 29 Z" fill="#475569" opacity="0.3"/>
+          <!-- Roof Stiffening Ribs (Rainures de rigidité) -->
+          <line x1="12" y1="31" x2="12" y2="74" stroke="#94a3b8" stroke-width="0.75" opacity="0.7"/>
+          <line x1="20" y1="31" x2="20" y2="74" stroke="#94a3b8" stroke-width="0.75" opacity="0.7"/>
+          <line x1="28" y1="31" x2="28" y2="74" stroke="#94a3b8" stroke-width="0.75" opacity="0.7"/>
+          <!-- Corner Aluminum Profiles (Profilés d'angles) -->
+          <rect x="6" y="27" width="2" height="52" fill="#64748b" opacity="0.4"/>
+          <rect x="32" y="27" width="2" height="52" fill="#64748b" opacity="0.4"/>
+
+          <!-- Rear Double Doors Outline & Locking Bars -->
+          <rect x="7" y="78" width="26" height="2" fill="#1e293b"/>
+          <line x1="20" y1="74" x2="20" y2="79" stroke="#0f172a" stroke-width="0.9"/>
+          <line x1="15" y1="73" x2="15" y2="79" stroke="#334155" stroke-width="0.8"/>
+          <rect x="14.2" y="75" width="1.6" height="2" fill="#0f172a"/>
+          <line x1="25" y1="73" x2="25" y2="79" stroke="#334155" stroke-width="0.8"/>
+          <rect x="24.2" y="75" width="1.6" height="2" fill="#0f172a"/>
+
+          <!-- Rear Bumper & LED Taillights -->
+          <rect x="6" y="79" width="28" height="2.5" fill="#0f172a" rx="0.5"/>
+          <rect x="7" y="79" width="5" height="2" fill="${taillightColor}" rx="0.5"/>
+          <rect x="28" y="79" width="5" height="2" fill="${taillightColor}" rx="0.5"/>
+
+          <!-- CABIN (Main Tractor Unit) -->
+          <path d="M 7 28 L 7 14 Q 7 8 13 6.5 L 27 6.5 Q 33 8 33 14 L 33 28 Z" fill="url(#cabGrad-${iconKey})" stroke="${strokeColor}" stroke-width="0.8"/>
+          <!-- Aerodynamic Roof Spoiler / Casquette matching Image 1 -->
+          <path d="M 9 12 Q 20 8.5 31 12 L 30 14 Q 20 11 10 14 Z" fill="#ffffff" opacity="0.4"/>
+          <!-- Windshield Glass -->
+          <path d="M 9.5 15.5 Q 9.5 11 13 10 L 27 10 Q 30.5 11 30.5 15.5 L 29 17.5 L 11 17.5 Z" fill="#0f172a" stroke="#1e293b" stroke-width="0.5"/>
+          <path d="M 12 11 L 18 11 L 16 16.5 L 11 16.5 Z" fill="#38bdf8" opacity="0.45"/>
+
+          <!-- Side Mirrors extending outwards -->
+          <line x1="7" y1="16" x2="2.5" y2="14" stroke="#334155" stroke-width="1.2"/>
+          <rect x="1.5" y="12" width="2.5" height="4.5" rx="1" fill="#0f172a"/>
+          <line x1="33" y1="16" x2="37.5" y2="14" stroke="#334155" stroke-width="1.2"/>
+          <rect x="36" y="12" width="2.5" height="4.5" rx="1" fill="#0f172a"/>
+
+          <!-- Front LED Headlights -->
+          <rect x="9" y="5.5" width="4" height="2" rx="0.8" fill="${headlightColor}"/>
+          <rect x="27" y="5.5" width="4" height="2" rx="0.8" fill="${headlightColor}"/>
+
+          <!-- Forward Directional Arrow Indicator -->
+          <path d="M 20 0.5 L 23 4 L 21.5 4 L 21.5 6 L 18.5 6 L 18.5 4 L 17 4 Z" fill="${arrowColor}"/>
+        </g>
+      </svg>
+    `;
   }
 
   const svgHtml = `
     <div class="custom-vehicle-marker" style="width: ${dims.width}px; height: ${dims.height}px;">
       <div class="truck-rotator" style="width: 100%; height: 100%; transform: rotate(${roundedHeading}deg); transform-origin: center center; transition: transform 0.35s cubic-bezier(0.2, 0, 0.2, 1);">
-        <svg width="100%" height="100%" viewBox="0 0 40 80" xmlns="http://www.w3.org/2000/svg" style="overflow: visible; display: block;">
-          <defs>
-            <linearGradient id="cabGrad-${iconKey}" x1="0%" y1="0%" x2="0%" y2="100%">
-              ${cabGradStops}
-            </linearGradient>
-            <linearGradient id="chromeGrad-${iconKey}" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stop-color="#e2e8f0"/>
-              <stop offset="50%" stop-color="#94a3b8"/>
-              <stop offset="100%" stop-color="#64748b"/>
-            </linearGradient>
-            <linearGradient id="deckGrad-${iconKey}" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stop-color="#64748b"/>
-              <stop offset="100%" stop-color="#334155"/>
-            </linearGradient>
-            <linearGradient id="beamGrad-${iconKey}" x1="0%" y1="100%" x2="0%" y2="0%">
-              <stop offset="0%" stop-color="rgba(16, 185, 129, 0.45)"/>
-              <stop offset="100%" stop-color="rgba(16, 185, 129, 0)"/>
-            </linearGradient>
-            <filter id="truckGlow-${iconKey}" x="-20%" y="-20%" width="140%" height="140%">
-              <feDropShadow dx="0" dy="1" stdDeviation="1.5" flood-color="${glowColor}" flood-opacity="${glowOpacity}"/>
-              <feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="#000000" flood-opacity="0.35"/>
-            </filter>
-          </defs>
-
-          <!-- Ground Shadow -->
-          <ellipse cx="20" cy="40" rx="14" ry="36" fill="rgba(0,0,0,0.35)"/>
-
-          ${
-            statusKey === 'moving'
-              ? `
-            <!-- Headlight Light Beam projecting forward onto road -->
-            <polygon points="9,6 -2,-18 42,-18 31,6" fill="url(#beamGrad-${iconKey})"/>
-            <!-- Active motion radar wave -->
-            <ellipse cx="20" cy="8" rx="8" ry="3" fill="none" stroke="#10b981" stroke-width="1.2" opacity="0.8">
-              <animate attributeName="ry" from="2" to="8" dur="1.2s" repeatCount="indefinite"/>
-              <animate attributeName="rx" from="6" to="16" dur="1.2s" repeatCount="indefinite"/>
-              <animate attributeName="opacity" from="0.9" to="0" dur="1.2s" repeatCount="indefinite"/>
-            </ellipse>
-          `
-              : ''
-          }
-
-          <g filter="url(#truckGlow-${iconKey})">
-            <!-- Wheels (8 total: Front Steer + 3 Rear Axles) -->
-            <!-- Steer Axle (Front) -->
-            <rect x="2.5" y="14" width="4.5" height="11" rx="2" fill="#0f172a"/>
-            <rect x="33" y="14" width="4.5" height="11" rx="2" fill="#0f172a"/>
-            <!-- Rear Axle 1 -->
-            <rect x="2.5" y="46" width="4.5" height="9.5" rx="2" fill="#0f172a"/>
-            <rect x="33" y="46" width="4.5" height="9.5" rx="2" fill="#0f172a"/>
-            <!-- Rear Axle 2 -->
-            <rect x="2.5" y="56" width="4.5" height="9.5" rx="2" fill="#0f172a"/>
-            <rect x="33" y="56" width="4.5" height="9.5" rx="2" fill="#0f172a"/>
-            <!-- Rear Axle 3 -->
-            <rect x="2.5" y="66" width="4.5" height="9.5" rx="2" fill="#0f172a"/>
-            <rect x="33" y="66" width="4.5" height="9.5" rx="2" fill="#0f172a"/>
-
-            <!-- Fuel Tank & Side Equipment Box -->
-            <rect x="5" y="29" width="4.5" height="13" rx="1.5" fill="url(#chromeGrad-${iconKey})"/>
-            <rect x="30.5" y="29" width="4.5" height="13" rx="1.5" fill="#334155"/>
-
-            <!-- Flatbed Platform (Deck / Chassis) -->
-            <rect x="13" y="26" width="14" height="50" fill="#1e293b"/>
-            <rect x="7" y="28" width="26" height="48" rx="2.5" fill="url(#deckGrad-${iconKey})" stroke="#1e293b" stroke-width="0.8"/>
-            <rect x="8.5" y="29.5" width="23" height="45" rx="1.5" fill="none" stroke="#64748b" stroke-width="0.7"/>
-            <!-- Deck cross-ribs -->
-            <line x1="10" y1="36" x2="30" y2="36" stroke="#1e293b" stroke-width="0.7"/>
-            <line x1="10" y1="44" x2="30" y2="44" stroke="#1e293b" stroke-width="0.7"/>
-            <line x1="10" y1="52" x2="30" y2="52" stroke="#1e293b" stroke-width="0.7"/>
-            <line x1="10" y1="60" x2="30" y2="60" stroke="#1e293b" stroke-width="0.7"/>
-            <line x1="10" y1="68" x2="30" y2="68" stroke="#1e293b" stroke-width="0.7"/>
-
-            <!-- Rear Bumper & LED Taillights -->
-            <rect x="7" y="76" width="26" height="2.5" fill="#0f172a" rx="0.5"/>
-            <rect x="8" y="76" width="4.5" height="2" fill="${taillightColor}" rx="0.5"/>
-            <rect x="27.5" y="76" width="4.5" height="2" fill="${taillightColor}" rx="0.5"/>
-
-            <!-- CABIN (Main Tractor Unit) -->
-            <path d="M 7 28 L 7 14 Q 7 8 13 6.5 L 27 6.5 Q 33 8 33 14 L 33 28 Z" fill="url(#cabGrad-${iconKey})" stroke="${strokeColor}" stroke-width="0.8"/>
-            <!-- Aerodynamic Sun Visor -->
-            <path d="M 9.5 9 Q 20 7.8 30.5 9 L 30 10.5 Q 20 9.2 10 10.5 Z" fill="#ffffff" opacity="0.35"/>
-            <!-- Windshield Glass -->
-            <path d="M 9.5 15.5 Q 9.5 11 13 10 L 27 10 Q 30.5 11 30.5 15.5 L 29 17.5 L 11 17.5 Z" fill="#0f172a" stroke="#1e293b" stroke-width="0.5"/>
-            <path d="M 12 11 L 18 11 L 16 16.5 L 11 16.5 Z" fill="#38bdf8" opacity="0.45"/>
-            <!-- Roof hatch -->
-            <rect x="14" y="20" width="12" height="5" rx="1.5" fill="#0f172a" opacity="0.25"/>
-
-            <!-- Side Mirrors extending outwards -->
-            <line x1="7" y1="16" x2="3" y2="14" stroke="#334155" stroke-width="1.2"/>
-            <rect x="1.5" y="12" width="2.5" height="4.5" rx="1" fill="#0f172a"/>
-            <line x1="33" y1="16" x2="37" y2="14" stroke="#334155" stroke-width="1.2"/>
-            <rect x="36" y="12" width="2.5" height="4.5" rx="1" fill="#0f172a"/>
-
-            <!-- Front LED Headlights -->
-            <rect x="9" y="5.5" width="4" height="2" rx="0.8" fill="${headlightColor}"/>
-            <rect x="27" y="5.5" width="4" height="2" rx="0.8" fill="${headlightColor}"/>
-
-            <!-- Forward Directional Arrow Indicator -->
-            <path d="M 20 0.5 L 23 4 L 21.5 4 L 21.5 6 L 18.5 6 L 18.5 4 L 17 4 Z" fill="${arrowColor}"/>
-          </g>
-        </svg>
+        ${vehicleInnerSvg}
       </div>
     </div>
   `;
@@ -407,6 +650,7 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
   showPoints = true,
   zoomSignal,
 }) => {
+  const vehicleTypesMap = useVehicleTypesMap();
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const markersRef = useRef<Map<string, L.Marker>>(new Map());
@@ -696,9 +940,14 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
       vehicleHeadingsRef.current.set(vehicle.id, heading);
       vehiclePositionsRef.current.set(vehicle.id, { lat, lng });
 
+      const vType =
+        vehicleTypesMap[vehicle.id] ||
+        (vehicle.plate ? vehicleTypesMap[vehicle.plate.toLowerCase().trim()] : null) ||
+        getVehicleVisualType(vehicle.id, vehicle);
+
       const roundedHeading = Math.round(((heading % 360) + 360) % 360);
       const headingBucket = Math.round(roundedHeading / 5) * 5;
-      const iconKey = `${markerDensity}-${statusKey}-${isMoving ? 'm' : 's'}-${headingBucket}`;
+      const iconKey = `${vType}-${markerDensity}-${statusKey}-${isMoving ? 'm' : 's'}-${headingBucket}`;
 
       if (marker) {
         (marker as any).vehicleData = vehicle;
@@ -721,11 +970,11 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
 
         const prevState = markerStateRef.current.get(vehicle.id);
         if (!prevState || prevState.iconKey !== iconKey) {
-          marker.setIcon(createVehicleIcon(statusKey, isMoving, isOnline, markerDensity, heading));
+          marker.setIcon(createVehicleIcon(statusKey, isMoving, isOnline, markerDensity, heading, vType));
         }
       } else {
         marker = L.marker([lat, lng], {
-          icon: createVehicleIcon(statusKey, isMoving, isOnline, markerDensity, heading),
+          icon: createVehicleIcon(statusKey, isMoving, isOnline, markerDensity, heading, vType),
         });
         (marker as any).vehicleData = vehicle;
 
@@ -994,7 +1243,7 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
         hasFittedBounds.current = true;
       }
     }
-  }, [vehicles, onVehicleSelect, enableClustering, selectedVehicleId, markerDensity, showPoints]);
+  }, [vehicles, onVehicleSelect, enableClustering, selectedVehicleId, markerDensity, showPoints, vehicleTypesMap]);
 
   // Handle vehicle selection (fly to)
   useEffect(() => {

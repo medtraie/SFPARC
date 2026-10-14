@@ -43,6 +43,12 @@ import {
   extractVehicleDistanceToday,
   extractVehicleMaxSpeed,
 } from '@/lib/gpswox-sensors';
+import {
+  useVehicleVisualType,
+  VEHICLE_VISUAL_TYPES,
+  VehicleVisualType,
+} from '@/hooks/useVehicleTypes';
+import { useToast } from '@/hooks/use-toast';
 
 interface VehicleCardProps {
   vehicle: GPSwoxVehicle;
@@ -80,8 +86,16 @@ export function VehicleCard({
   onDetails,
 }: VehicleCardProps) {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [copied, setCopied] = useState(false);
   const [addressOpen, setAddressOpen] = useState(false);
+
+  // 2D Map Vehicle Visual Type (Box Truck, Car, Flatbed Truck)
+  const {
+    type: vehicleVisualType,
+    setType: setVehicleVisualType,
+    meta: visualMeta,
+  } = useVehicleVisualType(vehicle.id, vehicle);
 
   const speed = vehicle.lastPosition?.speed || 0;
   const fuel = vehicle.fuelQuantity;
@@ -130,7 +144,12 @@ export function VehicleCard({
     }
   };
 
-  const VehicleIcon = getVehicleIcon(`${vehicle.plate} ${vehicle.brand} ${vehicle.model}`);
+  const VehicleIcon = useMemo(() => {
+    if (vehicleVisualType === 'car') return Car;
+    if (vehicleVisualType === 'truck_box' || vehicleVisualType === 'truck_flatbed') return Truck;
+    return getVehicleIcon(`${vehicle.plate} ${vehicle.brand} ${vehicle.model}`);
+  }, [vehicleVisualType, vehicle.plate, vehicle.brand, vehicle.model]);
+
   const modelText = getCleanVehicleModel(vehicle.brand, vehicle.model, vehicle.plate);
 
   // Digital speedometer HUD theme & color dynamics based on vehicle state
@@ -203,9 +222,60 @@ export function VehicleCard({
           <VehicleIcon className="w-5 h-5" />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <p className="font-extrabold text-sm text-white tracking-wide">{vehicle.plate}</p>
             <span className="text-[11px] text-slate-400 font-medium truncate">{modelText}</span>
+
+            {/* Compact 2D Map Model Selector */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-cyan-950/50 hover:bg-cyan-900/60 border border-cyan-500/30 text-[10px] font-bold text-cyan-300 transition-colors shadow-sm cursor-pointer"
+                  title="Sélectionner le modèle 2D pour la carte Live"
+                >
+                  <span>{visualMeta.id === 'car' ? '🚗' : visualMeta.id === 'truck_flatbed' ? '🚛' : '🚚'}</span>
+                  <span>{visualMeta.labelFr}</span>
+                  <ChevronDown className="w-2.5 h-2.5 opacity-70" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="bg-[#0E1626] border border-cyan-500/30 text-slate-200 p-1.5 min-w-[230px] shadow-2xl z-50">
+                <div className="px-2 py-1 text-[10px] font-extrabold uppercase tracking-wider text-cyan-400 border-b border-white/[0.08] mb-1">
+                  Modèle Carte Live (2D)
+                </div>
+                {(Object.keys(VEHICLE_VISUAL_TYPES) as VehicleVisualType[]).map((vKey) => {
+                  const item = VEHICLE_VISUAL_TYPES[vKey];
+                  const isSelected = vehicleVisualType === vKey;
+                  return (
+                    <DropdownMenuItem
+                      key={vKey}
+                      onClick={() => {
+                        setVehicleVisualType(vKey);
+                        toast({
+                          title: 'Modèle Carte Mis à Jour',
+                          description: `${vehicle.plate} s'affichera comme ${item.labelFr} sur la carte.`,
+                        });
+                      }}
+                      className={cn(
+                        'flex items-start gap-2 p-2 rounded-lg cursor-pointer transition-colors text-xs',
+                        isSelected ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'hover:bg-white/[0.05] text-slate-300'
+                      )}
+                    >
+                      <span className="text-base leading-none mt-0.5">
+                        {vKey === 'car' ? '🚗' : vKey === 'truck_flatbed' ? '🚛' : '🚚'}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <p className="font-bold text-xs">{item.labelFr}</p>
+                          {isSelected && <Check className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />}
+                        </div>
+                        <p className="text-[10px] text-slate-400 leading-tight mt-0.5">{item.descriptionFr}</p>
+                      </div>
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
           <p className="text-xs text-slate-400 truncate flex items-center gap-1.5 mt-0.5">
             <MapPin className="w-3 h-3 text-cyan-400 flex-shrink-0" />
@@ -254,7 +324,7 @@ export function VehicleCard({
       <div>
         {/* Top Header Row */}
         <div className="flex items-center justify-between gap-1 mb-1">
-          <div className="flex items-center gap-1.5 min-w-0">
+          <div className="flex items-center gap-1.5 min-w-0 flex-1">
             {/* 3D Neumorphic Icon Container */}
             <div className="relative w-7 h-7 rounded-lg bg-gradient-to-br from-[#0E1626] to-[#080E1B] p-0.5 shadow-[inset_1px_1px_2px_rgba(255,255,255,0.08),2px_2px_5px_rgba(0,0,0,0.6)] flex items-center justify-center flex-shrink-0 border border-white/[0.06]">
               <div className="w-full h-full rounded-[6px] bg-gradient-to-br from-cyan-500/20 via-sky-500/10 to-transparent flex items-center justify-center text-cyan-300 group-hover:scale-105 transition-transform duration-300">
@@ -274,13 +344,68 @@ export function VehicleCard({
               </span>
             </div>
 
-            <div className="min-w-0">
-              <h3 className="text-xs font-black text-white tracking-wide truncate font-mono leading-tight">
-                {vehicle.plate}
-              </h3>
-              <p className="text-[9px] font-semibold text-slate-400 truncate leading-none mt-0.5">
-                {modelText}
-              </p>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-1">
+                <h3 className="text-xs font-black text-white tracking-wide truncate font-mono leading-tight">
+                  {vehicle.plate}
+                </h3>
+              </div>
+              <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                <span className="text-[9px] font-semibold text-slate-400 truncate max-w-[85px] leading-none">
+                  {modelText}
+                </span>
+
+                {/* 2D Map Vehicle Type Selector Pill */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-cyan-950/50 hover:bg-cyan-900/60 border border-cyan-500/30 hover:border-cyan-400/60 text-[8.5px] font-bold text-cyan-300 transition-all cursor-pointer shadow-sm"
+                      title="Sélectionner le modèle 2D pour la carte Live"
+                    >
+                      <span className="text-[9.5px] leading-none">{visualMeta.id === 'car' ? '🚗' : visualMeta.id === 'truck_flatbed' ? '🚛' : '🚚'}</span>
+                      <span className="truncate max-w-[80px] leading-none">{visualMeta.labelFr.replace('Camion ', '')}</span>
+                      <ChevronDown className="w-2.5 h-2.5 opacity-70" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="bg-[#0E1626] border border-cyan-500/30 text-slate-200 p-1.5 min-w-[230px] shadow-2xl z-50">
+                    <div className="px-2 py-1 text-[10px] font-extrabold uppercase tracking-wider text-cyan-400 border-b border-white/[0.08] mb-1">
+                      Modèle Carte Live (2D)
+                    </div>
+                    {(Object.keys(VEHICLE_VISUAL_TYPES) as VehicleVisualType[]).map((vKey) => {
+                      const item = VEHICLE_VISUAL_TYPES[vKey];
+                      const isSelected = vehicleVisualType === vKey;
+                      return (
+                        <DropdownMenuItem
+                          key={vKey}
+                          onClick={() => {
+                            setVehicleVisualType(vKey);
+                            toast({
+                              title: 'Modèle Carte Mis à Jour',
+                              description: `${vehicle.plate} s'affichera comme ${item.labelFr} sur la carte.`,
+                            });
+                          }}
+                          className={cn(
+                            'flex items-start gap-2 p-2 rounded-lg cursor-pointer transition-colors text-xs',
+                            isSelected ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'hover:bg-white/[0.05] text-slate-300'
+                          )}
+                        >
+                          <span className="text-base leading-none mt-0.5">
+                            {vKey === 'car' ? '🚗' : vKey === 'truck_flatbed' ? '🚛' : '🚚'}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between">
+                              <p className="font-bold text-xs">{item.labelFr}</p>
+                              {isSelected && <Check className="w-3.5 h-3.5 text-cyan-400 flex-shrink-0" />}
+                            </div>
+                            <p className="text-[10px] text-slate-400 leading-tight mt-0.5">{item.descriptionFr}</p>
+                          </div>
+                        </DropdownMenuItem>
+                      );
+                    })}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
           </div>
 
@@ -338,6 +463,34 @@ export function VehicleCard({
                 >
                   Historique des trajets
                 </DropdownMenuItem>
+
+                <div className="my-1 border-t border-white/[0.08]" />
+                <div className="px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-cyan-400">
+                  Modèle Carte 2D
+                </div>
+                {(Object.keys(VEHICLE_VISUAL_TYPES) as VehicleVisualType[]).map((vKey) => {
+                  const item = VEHICLE_VISUAL_TYPES[vKey];
+                  const isSelected = vehicleVisualType === vKey;
+                  return (
+                    <DropdownMenuItem
+                      key={vKey}
+                      onClick={() => {
+                        setVehicleVisualType(vKey);
+                        toast({
+                          title: 'Modèle Carte Mis à Jour',
+                          description: `${vehicle.plate} s'affichera comme ${item.labelFr} sur la carte.`,
+                        });
+                      }}
+                      className={cn(
+                        'text-xs flex items-center justify-between',
+                        isSelected ? 'text-cyan-300 font-bold bg-cyan-500/10' : ''
+                      )}
+                    >
+                      <span>{vKey === 'car' ? '🚗' : vKey === 'truck_flatbed' ? '🚛' : '🚚'} {item.labelFr}</span>
+                      {isSelected && <Check className="w-3 h-3 text-cyan-400" />}
+                    </DropdownMenuItem>
+                  );
+                })}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
