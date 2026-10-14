@@ -148,21 +148,56 @@ const computeDistanceMeters = (lat1: number, lng1: number, lat2: number, lng2: n
   return R * c;
 };
 
-// Smooth marker glide animation helper
-const animateMarkerTo = (
-  marker: L.Marker,
-  targetLat: number,
-  targetLng: number,
-  clusterGroup?: L.MarkerClusterGroup | null,
-  durationMs = 900
-) => {
+interface AnimateMarkerParams {
+  marker: L.Marker;
+  targetLat: number;
+  targetLng: number;
+  clusterGroup?: L.MarkerClusterGroup | null;
+  durationMs?: number;
+  speedKmh?: number;
+  headingDeg?: number;
+  isMoving?: boolean;
+  map?: L.Map | null;
+  isFollowed?: boolean;
+}
+
+// Smooth continuous real-time marker glide with dead reckoning & follow camera sync
+const animateMarkerTo = ({
+  marker,
+  targetLat,
+  targetLng,
+  clusterGroup,
+  durationMs = 1500,
+  speedKmh = 0,
+  headingDeg = 0,
+  isMoving = false,
+  map,
+  isFollowed = false,
+}: AnimateMarkerParams) => {
+  // Cancel previous animation frame on this marker
+  if ((marker as any)._animId) {
+    cancelAnimationFrame((marker as any)._animId);
+    (marker as any)._animId = null;
+  }
+
   const startLatLng = marker.getLatLng();
   const deltaLat = targetLat - startLatLng.lat;
   const deltaLng = targetLng - startLatLng.lng;
-  if (Math.abs(deltaLat) < 0.000001 && Math.abs(deltaLng) < 0.000001) return;
 
-  if (Math.abs(deltaLat) > 0.02 || Math.abs(deltaLng) > 0.02) {
+  // Negligible movement (< 0.05m)
+  if (Math.abs(deltaLat) < 0.0000005 && Math.abs(deltaLng) < 0.0000005) {
+    if (isFollowed && map && !map._animatingZoom) {
+      map.panTo([targetLat, targetLng], { animate: false });
+    }
+    return;
+  }
+
+  // Teleport / large displacement (> 5km): jump directly without interpolation
+  if (Math.abs(deltaLat) > 0.05 || Math.abs(deltaLng) > 0.05) {
     marker.setLatLng([targetLat, targetLng]);
+    if (isFollowed && map && !map._animatingZoom) {
+      map.panTo([targetLat, targetLng], { animate: false });
+    }
     if (clusterGroup && clusterGroup.hasLayer(marker)) {
       clusterGroup.refreshClusters(marker);
     }
@@ -170,32 +205,68 @@ const animateMarkerTo = (
   }
 
   const startTime = performance.now();
+  const duration = durationMs;
+
   const animate = (currentTime: number) => {
-    // If map is currently executing a zoom animation, immediately complete to target LatLng
+    // If map is currently animating zoom, snap to target LatLng immediately
     const m = (marker as any)._map;
     if (m && m._animatingZoom) {
       marker.setLatLng([targetLat, targetLng]);
       if (clusterGroup && clusterGroup.hasLayer(marker)) {
         clusterGroup.refreshClusters(marker);
       }
+      (marker as any)._animId = null;
       return;
     }
 
     const elapsed = currentTime - startTime;
-    const progress = Math.min(elapsed / durationMs, 1);
-    const ease = 1 - Math.pow(1 - progress, 2);
-    const curLat = startLatLng.lat + deltaLat * ease;
-    const curLng = startLatLng.lng + deltaLng * ease;
-    marker.setLatLng([curLat, curLng]);
-    if (progress < 1) {
-      requestAnimationFrame(animate);
+    let curLat: number;
+    let curLng: number;
+
+    if (elapsed <= duration) {
+      // Smooth Hermite blend (smoothstep) for seamless continuous travel
+      const progress = elapsed / duration;
+      const t = progress * progress * (3 - 2 * progress);
+      curLat = startLatLng.lat + deltaLat * t;
+      curLng = startLatLng.lng + deltaLng * t;
+    } else if (isMoving && speedKmh >= 5) {
+      // Gentle dead reckoning: continue gliding along road direction until next GPS packet
+      const overtimeSec = (elapsed - duration) / 1000;
+      if (overtimeSec > 3.0) {
+        (marker as any)._animId = null;
+        return;
+      }
+      const speedMps = (speedKmh * 1000) / 3600;
+      const headingRad = (headingDeg * Math.PI) / 180;
+      const latRad = (targetLat * Math.PI) / 180;
+      const dLat = (speedMps * Math.cos(headingRad) * overtimeSec) / 111320;
+      const dLng = (speedMps * Math.sin(headingRad) * overtimeSec) / (111320 * Math.cos(latRad));
+      curLat = targetLat + dLat;
+      curLng = targetLng + dLng;
     } else {
+      curLat = targetLat;
+      curLng = targetLng;
+      marker.setLatLng([curLat, curLng]);
+      if (isFollowed && map && !map._animatingZoom) {
+        map.panTo([curLat, curLng], { animate: false });
+      }
       if (clusterGroup && clusterGroup.hasLayer(marker)) {
         clusterGroup.refreshClusters(marker);
       }
+      (marker as any)._animId = null;
+      return;
     }
+
+    marker.setLatLng([curLat, curLng]);
+
+    if (isFollowed && map && !map._animatingZoom) {
+      map.panTo([curLat, curLng], { animate: false });
+    }
+
+    (marker as any)._animId = requestAnimationFrame(animate);
   };
-  requestAnimationFrame(animate);
+
+  (marker as any)._animId = requestAnimationFrame(animate);
 };
 
 const createVehicleIcon = (
@@ -673,6 +744,7 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const traceursRef = useRef<Map<string, L.Polyline>>(new Map());
   const lastSelectedFlyToRef = useRef<string | undefined>(undefined);
+  const lastFollowedIdRef = useRef<string | undefined>(undefined);
   const tileFallbackAppliedRef = useRef(false);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const tileLayersCacheRef = useRef<Map<string, L.TileLayer>>(new Map());
@@ -866,6 +938,12 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
     }
 
     return () => {
+      markersRef.current.forEach((marker) => {
+        if ((marker as any)._animId) {
+          cancelAnimationFrame((marker as any)._animId);
+          (marker as any)._animId = null;
+        }
+      });
       if (resizeObserverRef.current) {
         resizeObserverRef.current.disconnect();
         resizeObserverRef.current = null;
@@ -948,6 +1026,10 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
     // Remove markers for vehicles that no longer exist
     currentMarkers.forEach((marker, id) => {
       if (!vehicleIds.has(id)) {
+        if ((marker as any)._animId) {
+          cancelAnimationFrame((marker as any)._animId);
+          (marker as any)._animId = null;
+        }
         if (enableClustering && clusterGroupRef.current) {
           clusterGroupRef.current.removeLayer(marker);
         } else {
@@ -1009,10 +1091,22 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
         (marker as any).vehicleData = vehicle;
         const currentLatLng = marker.getLatLng();
         if (
-          Math.abs(currentLatLng.lat - lat) > 0.000001 ||
-          Math.abs(currentLatLng.lng - lng) > 0.000001
+          Math.abs(currentLatLng.lat - lat) > 0.0000005 ||
+          Math.abs(currentLatLng.lng - lng) > 0.0000005 ||
+          isMoving
         ) {
-          animateMarkerTo(marker, lat, lng, clusterGroupRef.current, 900);
+          animateMarkerTo({
+            marker,
+            targetLat: lat,
+            targetLng: lng,
+            clusterGroup: clusterGroupRef.current,
+            durationMs: followingVehicleId === vehicle.id ? 1500 : 2000,
+            speedKmh: rawSpeed,
+            headingDeg: heading,
+            isMoving,
+            map,
+            isFollowed: followingVehicleId === vehicle.id,
+          });
         }
 
         // Smoothly rotate the rotator element if already in DOM
@@ -1340,9 +1434,12 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
     hasFittedBounds.current = true;
   }, [resetViewSignal, vehicles]);
 
-  // Handle follow mode
+  // Handle follow mode: initial camera focus on vehicle
   useEffect(() => {
-    if (!mapRef.current || !followingVehicleId) return;
+    if (!mapRef.current || !followingVehicleId) {
+      lastFollowedIdRef.current = undefined;
+      return;
+    }
 
     const map = mapRef.current;
     const followedVehicle = vehicles.find((v) => v.id === followingVehicleId);
@@ -1350,11 +1447,14 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
 
     const { lat, lng } = followedVehicle.lastPosition;
 
-    // Center camera on followed vehicle at street level (zoom 17)
-    if (map.getZoom() < 17) {
-      map.flyTo([lat, lng], 17, { duration: 1.0 });
-    } else {
-      map.panTo([lat, lng], { animate: true, duration: 0.6 });
+    // Only do initial flyTo / center when user first activates follow
+    if (lastFollowedIdRef.current !== followingVehicleId) {
+      lastFollowedIdRef.current = followingVehicleId;
+      if (map.getZoom() < 17) {
+        map.flyTo([lat, lng], 17, { duration: 1.0 });
+      } else {
+        map.panTo([lat, lng], { animate: true, duration: 0.5 });
+      }
     }
 
     const targetMarker = markersRef.current.get(followingVehicleId);

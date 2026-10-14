@@ -97,10 +97,10 @@ export function useGPSwoxVehicles(refetchInterval = 30000) {
       return data.vehicles;
     },
     enabled: !!user,
-    refetchInterval, // Auto-refresh every 30 seconds by default
-    staleTime: 10000, // Consider data stale after 10 seconds
-    retry: 3,
-    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+    refetchInterval, // Real-time interval
+    staleTime: 0, // Always fetch fresh GPS coordinates on interval
+    retry: 2,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
   });
 }
 
