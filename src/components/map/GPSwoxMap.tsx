@@ -116,6 +116,7 @@ interface GPSwoxMapProps {
 // Store vehicle position history for traceurs
 const vehiclePositionHistory = new Map<string, L.LatLng[]>();
 const MAX_TRACEUR_POINTS = 100;
+const vehicleIconCache = new Map<string, L.DivIcon>();
 export type VehicleIconStatus = 'moving' | 'stopped' | 'offline' | 'maintenance';
 
 // Great-circle bearing calculation between two GPS points (0-360 deg)
