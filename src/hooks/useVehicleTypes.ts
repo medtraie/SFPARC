@@ -59,23 +59,48 @@ export function detectDefaultVehicleType(vehicleInfo?: {
 
   // Check for passenger cars / light vehicles
   if (
+    combined.includes('corsa') ||
+    combined.includes('opel') ||
     combined.includes('clio') ||
     combined.includes('duster') ||
+    combined.includes('sandero') ||
+    combined.includes('stepway') ||
+    combined.includes('logan') ||
     combined.includes('megane') ||
     combined.includes('golf') ||
-    combined.includes('peugeot 20') ||
-    combined.includes('peugeot 30') ||
-    combined.includes('sandero') ||
-    combined.includes('logan') ||
-    combined.includes('c-elysee') ||
+    combined.includes('polo') ||
     combined.includes('passat') ||
+    combined.includes('tiguan') ||
+    combined.includes('peugeot') ||
+    combined.includes('208') ||
+    combined.includes('308') ||
+    combined.includes('2008') ||
+    combined.includes('3008') ||
+    combined.includes('c-elysee') ||
+    combined.includes('c3') ||
+    combined.includes('c4') ||
+    combined.includes('citroen') ||
+    combined.includes('fiesta') ||
+    combined.includes('focus') ||
+    combined.includes('ibiza') ||
+    combined.includes('leon') ||
     combined.includes('corolla') ||
     combined.includes('yaris') ||
+    combined.includes('rav4') ||
     combined.includes('accent') ||
     combined.includes('tucson') ||
+    combined.includes('i10') ||
+    combined.includes('i20') ||
+    combined.includes('i30') ||
+    combined.includes('picanto') ||
     combined.includes('sportage') ||
+    combined.includes('punto') ||
+    combined.includes('fabia') ||
+    combined.includes('octavia') ||
     combined.includes('berline') ||
     combined.includes('voiture') ||
+    combined.includes('tourisme') ||
+    combined.includes('citadine') ||
     combined.includes('car') ||
     combined.includes('suv')
   ) {

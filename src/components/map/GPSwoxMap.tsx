@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef, useCallback, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
@@ -124,6 +124,14 @@ const vehiclePositionHistory = new Map<string, L.LatLng[]>();
 const MAX_TRACEUR_POINTS = 100;
 const vehicleIconCache = new Map<string, L.DivIcon>();
 export type VehicleIconStatus = 'moving' | 'stopped' | 'offline' | 'maintenance';
+export type ZoomTier = 'beacon' | 'regional' | 'city' | 'street';
+
+export const getZoomTier = (zoom: number): ZoomTier => {
+  if (zoom < 10) return 'beacon';
+  if (zoom < 14) return 'regional';
+  if (zoom < 17) return 'city';
+  return 'street';
+};
 
 // Great-circle bearing calculation between two GPS points (0-360 deg)
 const computeBearing = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
@@ -232,39 +240,14 @@ const createVehicleIcon = (
   _isOnline: boolean = true,
   density: MarkerDensity = 'standard',
   heading: number = 0,
-  vehicleType: VehicleVisualType = 'truck_box'
+  vehicleType: VehicleVisualType = 'truck_box',
+  zoomTier: ZoomTier = 'street'
 ) => {
   const roundedHeading = Math.round(((heading % 360) + 360) % 360);
   const headingBucket = Math.round(roundedHeading / 5) * 5;
-  const iconKey = `${vehicleType}-${density}-${statusKey}-${isMoving ? 'm' : 's'}-${headingBucket}`;
+  const iconKey = `${vehicleType}-${density}-${zoomTier}-${statusKey}-${isMoving ? 'm' : 's'}-${headingBucket}`;
   const cachedIcon = vehicleIconCache.get(iconKey);
   if (cachedIcon) return cachedIcon;
-
-  // Scaled dimensions depending on vehicle type & density
-  let dims = { width: 22, height: 46, anchorX: 11, anchorY: 23 };
-  if (vehicleType === 'car') {
-    dims =
-      density === 'compact'
-        ? { width: 16, height: 34, anchorX: 8, anchorY: 17 }
-        : density === 'large'
-        ? { width: 23, height: 48, anchorX: 11.5, anchorY: 24 }
-        : { width: 19, height: 40, anchorX: 9.5, anchorY: 20 };
-  } else if (vehicleType === 'truck_flatbed') {
-    dims =
-      density === 'compact'
-        ? { width: 18, height: 36, anchorX: 9, anchorY: 18 }
-        : density === 'large'
-        ? { width: 26, height: 52, anchorX: 13, anchorY: 26 }
-        : { width: 22, height: 44, anchorX: 11, anchorY: 22 };
-  } else {
-    // truck_box
-    dims =
-      density === 'compact'
-        ? { width: 18, height: 38, anchorX: 9, anchorY: 19 }
-        : density === 'large'
-        ? { width: 26, height: 55, anchorX: 13, anchorY: 27 }
-        : { width: 22, height: 46, anchorX: 11, anchorY: 23 };
-  }
 
   // Theme palettes based on statusKey
   let cabGradStops = `
@@ -314,6 +297,72 @@ const createVehicleIcon = (
     headlightColor = '#fef08a';
     arrowColor = '#f59e0b';
   }
+
+  // --- ZOOM < 10: ULTRA-SLEEK HIGH-TECH MICRO BEACON ---
+  // When zoomed out to country/world view, NEVER show a giant vehicle covering whole countries!
+  if (zoomTier === 'beacon') {
+    const beaconSize = 16;
+    const half = 8;
+    const beaconHtml = `
+      <div class="custom-vehicle-marker vehicle-beacon-marker" style="width: ${beaconSize}px; height: ${beaconSize}px; position: relative; display: flex; align-items: center; justify-content: center;">
+        ${
+          statusKey === 'moving'
+            ? `<div style="position: absolute; inset: -4px; border-radius: 50%; background: ${glowColor}; opacity: 0.55; animation: beaconPulse 1.8s ease-out infinite; pointer-events: none;"></div>`
+            : ''
+        }
+        <div class="truck-rotator" style="width: 100%; height: 100%; transform: rotate(${roundedHeading}deg); transform-origin: center center; position: relative; z-index: 2;">
+          <svg width="${beaconSize}" height="${beaconSize}" viewBox="0 0 20 20" style="display: block; overflow: visible;">
+            <defs>
+              <filter id="beaconGlow-${iconKey}" x="-30%" y="-30%" width="160%" height="160%">
+                <feDropShadow dx="0" dy="1" stdDeviation="1.5" flood-color="#000000" flood-opacity="0.6"/>
+              </filter>
+            </defs>
+            <circle cx="10" cy="10" r="8" fill="${glowColor}" stroke="#ffffff" stroke-width="1.8" filter="url(#beaconGlow-${iconKey})"/>
+            <polygon points="10,3.5 14,13.5 10,11 6,13.5" fill="#ffffff" />
+          </svg>
+        </div>
+      </div>
+    `;
+
+    const icon = L.divIcon({
+      html: beaconHtml,
+      className: 'custom-vehicle-marker-container',
+      iconSize: [beaconSize, beaconSize],
+      iconAnchor: [half, half],
+      popupAnchor: [0, -half - 4],
+    });
+    vehicleIconCache.set(iconKey, icon);
+    return icon;
+  }
+
+  // Scaled dimensions depending on vehicle type, density & zoom level
+  const densityMultiplier = density === 'compact' ? 0.85 : density === 'large' ? 1.15 : 1.0;
+
+  let baseDims = { width: 24, height: 50 };
+  if (zoomTier === 'regional') {
+    if (vehicleType === 'car') baseDims = { width: 14, height: 28 };
+    else if (vehicleType === 'truck_flatbed') baseDims = { width: 15, height: 32 };
+    else baseDims = { width: 15, height: 34 };
+  } else if (zoomTier === 'city') {
+    if (vehicleType === 'car') baseDims = { width: 18, height: 38 };
+    else if (vehicleType === 'truck_flatbed') baseDims = { width: 20, height: 42 };
+    else baseDims = { width: 20, height: 44 };
+  } else {
+    // street (zoom >= 17)
+    if (vehicleType === 'car') baseDims = { width: 22, height: 46 };
+    else if (vehicleType === 'truck_flatbed') baseDims = { width: 25, height: 50 };
+    else baseDims = { width: 25, height: 52 };
+  }
+
+  const finalWidth = Math.round(baseDims.width * densityMultiplier);
+  const finalHeight = Math.round(baseDims.height * densityMultiplier);
+  const dims = {
+    width: finalWidth,
+    height: finalHeight,
+    anchorX: finalWidth / 2,
+    anchorY: finalHeight / 2,
+  };
+
 
   let vehicleInnerSvg = '';
 
@@ -707,6 +756,7 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const tileLayersCacheRef = useRef<Map<string, L.TileLayer>>(new Map());
   const activeBaseLayerKeyRef = useRef<string | null>(null);
+  const [mapZoomTier, setMapZoomTier] = useState<ZoomTier>('beacon');
 
   // Handle external zoom controls
   useEffect(() => {
@@ -895,7 +945,20 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
       mapRef.current.addLayer(clusterGroupRef.current);
     }
 
+    const initialZoom = mapRef.current.getZoom();
+    setMapZoomTier(getZoomTier(initialZoom));
+
+    const handleZoomEnd = () => {
+      if (!mapRef.current) return;
+      const currentZ = mapRef.current.getZoom();
+      const nextTier = getZoomTier(currentZ);
+      setMapZoomTier((prev) => (prev !== nextTier ? nextTier : prev));
+    };
+
+    mapRef.current.on('zoomend', handleZoomEnd);
+
     return () => {
+      mapRef.current?.off('zoomend', handleZoomEnd);
       markersRef.current.forEach((marker) => {
         if ((marker as any)._animId) {
           cancelAnimationFrame((marker as any)._animId);
@@ -1058,7 +1121,7 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
 
       const roundedHeading = Math.round(((heading % 360) + 360) % 360);
       const headingBucket = Math.round(roundedHeading / 5) * 5;
-      const iconKey = `${vType}-${markerDensity}-${statusKey}-${isMoving ? 'm' : 's'}-${headingBucket}`;
+      const iconKey = `${vType}-${markerDensity}-${mapZoomTier}-${statusKey}-${isMoving ? 'm' : 's'}-${headingBucket}`;
 
       if (marker) {
         (marker as any).vehicleData = vehicle;
@@ -1087,11 +1150,11 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
 
         const prevState = markerStateRef.current.get(vehicle.id);
         if (!prevState || prevState.iconKey !== iconKey) {
-          marker.setIcon(createVehicleIcon(statusKey, isMoving, isOnline, markerDensity, heading, vType));
+          marker.setIcon(createVehicleIcon(statusKey, isMoving, isOnline, markerDensity, heading, vType, mapZoomTier));
         }
       } else {
         marker = L.marker([lat, lng], {
-          icon: createVehicleIcon(statusKey, isMoving, isOnline, markerDensity, heading, vType),
+          icon: createVehicleIcon(statusKey, isMoving, isOnline, markerDensity, heading, vType, mapZoomTier),
         });
         (marker as any).vehicleData = vehicle;
 
@@ -1362,7 +1425,7 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
         hasFittedBounds.current = true;
       }
     }
-  }, [vehicles, onVehicleSelect, enableClustering, selectedVehicleId, followingVehicleId, markerDensity, showPoints, vehicleTypesMap]);
+  }, [vehicles, onVehicleSelect, enableClustering, selectedVehicleId, followingVehicleId, markerDensity, showPoints, vehicleTypesMap, mapZoomTier]);
 
   // Handle vehicle selection (fly to)
   useEffect(() => {
@@ -1562,6 +1625,18 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
           cursor: pointer;
           filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.35));
           transition: transform 0.35s cubic-bezier(0.2, 0, 0.2, 1);
+        }
+
+        @keyframes beaconPulse {
+          0% { transform: scale(0.85); opacity: 0.85; }
+          70% { transform: scale(2.2); opacity: 0; }
+          100% { transform: scale(2.4); opacity: 0; }
+        }
+        .vehicle-beacon-marker {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
         }
 
         .leaflet-popup-content-wrapper {
