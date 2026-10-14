@@ -67,7 +67,8 @@ const getTileLayerConfig = (layerType: MapLayerType) => {
       return {
         url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-        maxZoom: 19,
+        maxNativeZoom: 19,
+        maxZoom: 20,
       };
   }
 };
@@ -170,6 +171,16 @@ const animateMarkerTo = (
 
   const startTime = performance.now();
   const animate = (currentTime: number) => {
+    // If map is currently executing a zoom animation, immediately complete to target LatLng
+    const m = (marker as any)._map;
+    if (m && m._animatingZoom) {
+      marker.setLatLng([targetLat, targetLng]);
+      if (clusterGroup && clusterGroup.hasLayer(marker)) {
+        clusterGroup.refreshClusters(marker);
+      }
+      return;
+    }
+
     const elapsed = currentTime - startTime;
     const progress = Math.min(elapsed / durationMs, 1);
     const ease = 1 - Math.pow(1 - progress, 2);
@@ -670,12 +681,43 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
   // Handle external zoom controls
   useEffect(() => {
     if (!mapRef.current || !zoomSignal) return;
+    const map = mapRef.current;
     if (zoomSignal.type === 'in') {
-      mapRef.current.zoomIn();
+      const curZoom = map.getZoom();
+      const maxZ = map.getMaxZoom() || 20;
+      if (curZoom < maxZ) {
+        if (followingVehicleId) {
+          const followedVehicle = vehicles.find((v) => v.id === followingVehicleId);
+          if (followedVehicle?.lastPosition) {
+            map.setView(
+              [followedVehicle.lastPosition.lat, followedVehicle.lastPosition.lng],
+              Math.min(curZoom + 1, maxZ),
+              { animate: true }
+            );
+            return;
+          }
+        }
+        map.zoomIn();
+      }
     } else if (zoomSignal.type === 'out') {
-      mapRef.current.zoomOut();
+      const curZoom = map.getZoom();
+      const minZ = map.getMinZoom() || 3;
+      if (curZoom > minZ) {
+        if (followingVehicleId) {
+          const followedVehicle = vehicles.find((v) => v.id === followingVehicleId);
+          if (followedVehicle?.lastPosition) {
+            map.setView(
+              [followedVehicle.lastPosition.lat, followedVehicle.lastPosition.lng],
+              Math.max(curZoom - 1, minZ),
+              { animate: true }
+            );
+            return;
+          }
+        }
+        map.zoomOut();
+      }
     }
-  }, [zoomSignal]);
+  }, [zoomSignal, followingVehicleId, vehicles]);
 
   const createTileLayer = useCallback((layerKey: string) => {
     const targetLayer = layerKey === 'fallback-osm' ? 'osm' : (layerKey as MapLayerType);
@@ -683,6 +725,7 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
     const layer = L.tileLayer(config.url, {
       attribution: config.attribution,
       maxZoom: config.maxZoom,
+      maxNativeZoom: (config as any).maxNativeZoom || config.maxZoom,
       ...(config.subdomains ? { subdomains: config.subdomains } : {}),
       updateWhenIdle: true,
       keepBuffer: 3,
@@ -713,6 +756,8 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
     mapRef.current = L.map(mapContainerRef.current, {
       center: [31.7917, -7.0926], // Morocco center
       zoom: 6,
+      minZoom: 3,
+      maxZoom: 20,
       zoomControl: false,
       fadeAnimation: false,
     });
@@ -744,6 +789,8 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
       showCoverageOnHover: false,
       zoomToBoundsOnClick: true, // Click directly zooms and distributes vehicles on the map
       maxClusterRadius: 80, // Ensures all initial vehicles group into one animated disc
+      disableClusteringAtZoom: 16, // At street level (zoom >= 16), automatically separate all vehicles onto streets
+      maxZoom: 20,
       iconCreateFunction: (cluster) => {
         const childMarkers = cluster.getAllChildMarkers();
         const count = childMarkers.length;
@@ -863,7 +910,16 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
     if (enableClustering) {
       if (!mapRef.current.hasLayer(clusterGroupRef.current)) {
         mapRef.current.addLayer(clusterGroupRef.current);
-        markersRef.current.forEach((marker) => {
+        markersRef.current.forEach((marker, id) => {
+          if (followingVehicleId === id) {
+            if (clusterGroupRef.current?.hasLayer(marker)) {
+              clusterGroupRef.current.removeLayer(marker);
+            }
+            if (!mapRef.current?.hasLayer(marker)) {
+              marker.addTo(mapRef.current!);
+            }
+            return;
+          }
           if (mapRef.current?.hasLayer(marker)) {
             mapRef.current.removeLayer(marker);
           }
@@ -879,7 +935,7 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
         mapRef.current.removeLayer(clusterGroupRef.current);
       }
     }
-  }, [enableClustering]);
+  }, [enableClustering, followingVehicleId]);
 
   // Update markers when vehicles change
   useEffect(() => {
@@ -987,8 +1043,10 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
 
       // Layer placement: if following this vehicle, NEVER cluster it!
       if (followingVehicleId === vehicle.id) {
-        if (clusterGroupRef.current && clusterGroupRef.current.hasLayer(marker)) {
-          clusterGroupRef.current.removeLayer(marker);
+        if (clusterGroupRef.current) {
+          try {
+            clusterGroupRef.current.removeLayer(marker);
+          } catch (_) {}
         }
         if (!map.hasLayer(marker)) {
           marker.addTo(map);
@@ -1243,7 +1301,7 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
         hasFittedBounds.current = true;
       }
     }
-  }, [vehicles, onVehicleSelect, enableClustering, selectedVehicleId, markerDensity, showPoints, vehicleTypesMap]);
+  }, [vehicles, onVehicleSelect, enableClustering, selectedVehicleId, followingVehicleId, markerDensity, showPoints, vehicleTypesMap]);
 
   // Handle vehicle selection (fly to)
   useEffect(() => {
