@@ -230,9 +230,14 @@ export default function Vehicles() {
           <div>
             <h1 className="text-2xl font-extrabold text-white tracking-tight flex items-center gap-2">
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-sky-300 to-blue-400">Véhicules</span>
+              {!isLoading && (
+                <span className="text-xs font-mono font-bold px-2.5 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-400/30">
+                  {totalVehicles}
+                </span>
+              )}
             </h1>
             <p className="text-xs font-medium text-slate-400 mt-1">
-              {isLoading ? 'Chargement...' : `${totalVehicles} véhicules au total • ${onlineCount} connectés en direct`}
+              {isLoading ? 'Chargement...' : `${totalVehicles} véhicules au total`}
             </p>
           </div>
           <div className="flex items-center gap-2.5">
@@ -262,11 +267,7 @@ export default function Vehicles() {
         </div>
 
         {/* 2026 Luxury Stats Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3.5">
-          <div className="rounded-2xl border border-white/[0.08] bg-[#121A2B] p-4 shadow-[6px_6px_16px_rgba(3,7,18,0.7),-3px_-3px_10px_rgba(255,255,255,0.02)] border-l-4 border-l-cyan-400">
-            <div className="text-2xl font-black text-white font-mono tracking-tight">{totalVehicles}</div>
-            <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mt-1">Total véhicules</div>
-          </div>
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3.5">
           <div className="rounded-2xl border border-white/[0.08] bg-[#121A2B] p-4 shadow-[6px_6px_16px_rgba(3,7,18,0.7),-3px_-3px_10px_rgba(255,255,255,0.02)] border-l-4 border-l-emerald-400">
             <div className="text-2xl font-black text-emerald-400 font-mono tracking-tight">{onlineCount}</div>
             <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mt-1">En ligne</div>
@@ -350,29 +351,6 @@ export default function Vehicles() {
                 <SelectItem value="online">🟢 En ligne</SelectItem>
                 <SelectItem value="offline">⚫ Hors ligne</SelectItem>
                 <SelectItem value="ack">🟡 En attente</SelectItem>
-              </SelectContent>
-            </Select>
-
-            {/* View Toggle */}
-            <Select value={fuelFilter} onValueChange={setFuelFilter}>
-              <SelectTrigger className="w-[160px]">
-                <SelectValue placeholder="Carburant" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tous niveaux</SelectItem>
-                <SelectItem value="low">Bas (&lt; 20%)</SelectItem>
-                <SelectItem value="ok">OK (≥ 20%)</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Select value={batteryFilter} onValueChange={setBatteryFilter}>
-              <SelectTrigger className="w-[160px]">
-                <SelectValue placeholder="Batterie" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Toutes batteries</SelectItem>
-                <SelectItem value="low">Basse (&lt; 9V)</SelectItem>
-                <SelectItem value="ok">OK (≥ 9V)</SelectItem>
               </SelectContent>
             </Select>
 
