@@ -154,25 +154,15 @@ interface AnimateMarkerParams {
   targetLng: number;
   clusterGroup?: L.MarkerClusterGroup | null;
   durationMs?: number;
-  speedKmh?: number;
-  headingDeg?: number;
-  isMoving?: boolean;
-  map?: L.Map | null;
-  isFollowed?: boolean;
 }
 
-// Smooth continuous real-time marker glide with dead reckoning & follow camera sync
+// Smooth continuous marker glide without fake dead reckoning
 const animateMarkerTo = ({
   marker,
   targetLat,
   targetLng,
   clusterGroup,
-  durationMs = 1500,
-  speedKmh = 0,
-  headingDeg = 0,
-  isMoving = false,
-  map,
-  isFollowed = false,
+  durationMs = 2000,
 }: AnimateMarkerParams) => {
   // Cancel previous animation frame on this marker
   if ((marker as any)._animId) {
@@ -184,20 +174,14 @@ const animateMarkerTo = ({
   const deltaLat = targetLat - startLatLng.lat;
   const deltaLng = targetLng - startLatLng.lng;
 
-  // Negligible movement (< 0.05m)
-  if (Math.abs(deltaLat) < 0.0000005 && Math.abs(deltaLng) < 0.0000005) {
-    if (isFollowed && map && !map._animatingZoom) {
-      map.panTo([targetLat, targetLng], { animate: false });
-    }
+  // Negligible movement (< 0.2 meters)
+  if (Math.abs(deltaLat) < 0.000002 && Math.abs(deltaLng) < 0.000002) {
     return;
   }
 
   // Teleport / large displacement (> 5km): jump directly without interpolation
   if (Math.abs(deltaLat) > 0.05 || Math.abs(deltaLng) > 0.05) {
     marker.setLatLng([targetLat, targetLng]);
-    if (isFollowed && map && !map._animatingZoom) {
-      map.panTo([targetLat, targetLng], { animate: false });
-    }
     if (clusterGroup && clusterGroup.hasLayer(marker)) {
       clusterGroup.refreshClusters(marker);
     }
@@ -220,50 +204,23 @@ const animateMarkerTo = ({
     }
 
     const elapsed = currentTime - startTime;
-    let curLat: number;
-    let curLng: number;
+    const progress = Math.min(elapsed / duration, 1);
+    // Smooth cosine interpolation (smooth start, steady glide, smooth stop)
+    const t = 0.5 - 0.5 * Math.cos(progress * Math.PI);
 
-    if (elapsed <= duration) {
-      // Smooth Hermite blend (smoothstep) for seamless continuous travel
-      const progress = elapsed / duration;
-      const t = progress * progress * (3 - 2 * progress);
-      curLat = startLatLng.lat + deltaLat * t;
-      curLng = startLatLng.lng + deltaLng * t;
-    } else if (isMoving && speedKmh >= 5) {
-      // Gentle dead reckoning: continue gliding along road direction until next GPS packet
-      const overtimeSec = (elapsed - duration) / 1000;
-      if (overtimeSec > 3.0) {
-        (marker as any)._animId = null;
-        return;
-      }
-      const speedMps = (speedKmh * 1000) / 3600;
-      const headingRad = (headingDeg * Math.PI) / 180;
-      const latRad = (targetLat * Math.PI) / 180;
-      const dLat = (speedMps * Math.cos(headingRad) * overtimeSec) / 111320;
-      const dLng = (speedMps * Math.sin(headingRad) * overtimeSec) / (111320 * Math.cos(latRad));
-      curLat = targetLat + dLat;
-      curLng = targetLng + dLng;
+    const curLat = startLatLng.lat + deltaLat * t;
+    const curLng = startLatLng.lng + deltaLng * t;
+    marker.setLatLng([curLat, curLng]);
+
+    if (progress < 1) {
+      (marker as any)._animId = requestAnimationFrame(animate);
     } else {
-      curLat = targetLat;
-      curLng = targetLng;
-      marker.setLatLng([curLat, curLng]);
-      if (isFollowed && map && !map._animatingZoom) {
-        map.panTo([curLat, curLng], { animate: false });
-      }
+      marker.setLatLng([targetLat, targetLng]);
       if (clusterGroup && clusterGroup.hasLayer(marker)) {
         clusterGroup.refreshClusters(marker);
       }
       (marker as any)._animId = null;
-      return;
     }
-
-    marker.setLatLng([curLat, curLng]);
-
-    if (isFollowed && map && !map._animatingZoom) {
-      map.panTo([curLat, curLng], { animate: false });
-    }
-
-    (marker as any)._animId = requestAnimationFrame(animate);
   };
 
   (marker as any)._animId = requestAnimationFrame(animate);
@@ -745,6 +702,7 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
   const traceursRef = useRef<Map<string, L.Polyline>>(new Map());
   const lastSelectedFlyToRef = useRef<string | undefined>(undefined);
   const lastFollowedIdRef = useRef<string | undefined>(undefined);
+  const lastProcessedGpsTimestampsRef = useRef<Map<string, number>>(new Map());
   const tileFallbackAppliedRef = useRef(false);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const tileLayersCacheRef = useRef<Map<string, L.TileLayer>>(new Map());
@@ -1044,6 +1002,21 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
     vehicles.forEach((vehicle) => {
       if (!vehicle.lastPosition) return;
       const { lat, lng } = vehicle.lastPosition;
+
+      // Protection against out-of-order stale GPS packets:
+      // If a response arrives late with an older GPS timestamp, do not move the vehicle backward!
+      const incomingTs = vehicle.lastPosition.timestamp;
+      if (incomingTs) {
+        const incomingTime = new Date(incomingTs).getTime();
+        const prevTime = lastProcessedGpsTimestampsRef.current.get(vehicle.id) || 0;
+        if (incomingTime > 0 && incomingTime < prevTime) {
+          return;
+        }
+        if (incomingTime > 0) {
+          lastProcessedGpsTimestampsRef.current.set(vehicle.id, incomingTime);
+        }
+      }
+
       let marker = currentMarkers.get(vehicle.id);
       const rawSpeed = vehicle.lastPosition.speed || 0;
       const isOnline = vehicle.online === 'online' || vehicle.online === 'ack';
@@ -1091,21 +1064,15 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
         (marker as any).vehicleData = vehicle;
         const currentLatLng = marker.getLatLng();
         if (
-          Math.abs(currentLatLng.lat - lat) > 0.0000005 ||
-          Math.abs(currentLatLng.lng - lng) > 0.0000005 ||
-          isMoving
+          Math.abs(currentLatLng.lat - lat) > 0.000002 ||
+          Math.abs(currentLatLng.lng - lng) > 0.000002
         ) {
           animateMarkerTo({
             marker,
             targetLat: lat,
             targetLng: lng,
             clusterGroup: clusterGroupRef.current,
-            durationMs: followingVehicleId === vehicle.id ? 1500 : 2000,
-            speedKmh: rawSpeed,
-            headingDeg: heading,
-            isMoving,
-            map,
-            isFollowed: followingVehicleId === vehicle.id,
+            durationMs: 2000,
           });
         }
 
@@ -1453,7 +1420,14 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
       if (map.getZoom() < 17) {
         map.flyTo([lat, lng], 17, { duration: 1.0 });
       } else {
-        map.panTo([lat, lng], { animate: true, duration: 0.5 });
+        map.panTo([lat, lng], { animate: true, duration: 0.8 });
+      }
+    } else {
+      // Smoothly pan camera to followed vehicle's new position if it moved noticeably
+      const center = map.getCenter();
+      const dist = computeDistanceMeters(center.lat, center.lng, lat, lng);
+      if (dist >= 1.5) {
+        map.panTo([lat, lng], { animate: true, duration: 1.8 });
       }
     }
 

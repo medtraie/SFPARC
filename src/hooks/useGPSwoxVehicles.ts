@@ -68,21 +68,36 @@ interface GPSwoxResponse {
   error?: string;
 }
 
+// Cache in-flight promise to prevent concurrent overlapping requests to GPSwox
+let inFlightGpswoxPromise: Promise<GPSwoxResponse> | null = null;
+
 async function fetchGPSwoxData(companyId: string): Promise<GPSwoxResponse> {
-  const { data, error } = await supabase.functions.invoke<GPSwoxResponse>("gpswox", {
-    body: { companyId },
-  });
-
-  if (error) {
-    console.error("Error fetching GPSwox data:", error);
-    throw new Error(error.message || "Failed to fetch data");
+  if (inFlightGpswoxPromise) {
+    return inFlightGpswoxPromise;
   }
 
-  if (!data?.success) {
-    throw new Error(data?.error || "Failed to fetch data");
-  }
+  inFlightGpswoxPromise = (async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke<GPSwoxResponse>("gpswox", {
+        body: { companyId },
+      });
 
-  return data;
+      if (error) {
+        console.error("Error fetching GPSwox data:", error);
+        throw new Error(error.message || "Failed to fetch data");
+      }
+
+      if (!data?.success) {
+        throw new Error(data?.error || "Failed to fetch data");
+      }
+
+      return data;
+    } finally {
+      inFlightGpswoxPromise = null;
+    }
+  })();
+
+  return inFlightGpswoxPromise;
 }
 
 export function useGPSwoxVehicles(refetchInterval = 30000) {
