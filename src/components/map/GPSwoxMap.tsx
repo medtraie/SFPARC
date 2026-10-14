@@ -25,6 +25,51 @@ if (typeof window !== 'undefined') {
   };
 }
 
+// Prevent Leaflet zoom-transition crash: "Cannot read properties of undefined (reading '_leaflet_pos')"
+// during rapid zoom / markercluster updates
+if (typeof window !== 'undefined' && L) {
+  if (L.DomUtil && L.DomUtil.getPosition) {
+    const originalGetPosition = L.DomUtil.getPosition;
+    L.DomUtil.getPosition = function (el: HTMLElement | null | undefined): L.Point {
+      if (!el) return new L.Point(0, 0);
+      try {
+        const pos = (el as any)._leaflet_pos;
+        if (!pos) return new L.Point(0, 0);
+        return originalGetPosition.call(L.DomUtil, el);
+      } catch {
+        return new L.Point(0, 0);
+      }
+    };
+  }
+
+  if (L.Map && L.Map.prototype) {
+    const originalGetMapPanePos = (L.Map.prototype as any)._getMapPanePos;
+    (L.Map.prototype as any)._getMapPanePos = function (): L.Point {
+      if (!this._mapPane) return new L.Point(0, 0);
+      try {
+        return originalGetMapPanePos ? originalGetMapPanePos.call(this) : new L.Point(0, 0);
+      } catch {
+        return new L.Point(0, 0);
+      }
+    };
+
+    const originalOnZoomTransitionEnd = (L.Map.prototype as any)._onZoomTransitionEnd;
+    if (originalOnZoomTransitionEnd) {
+      (L.Map.prototype as any)._onZoomTransitionEnd = function () {
+        if (!this._mapPane) {
+          this._animatingZoom = false;
+          return;
+        }
+        try {
+          originalOnZoomTransitionEnd.call(this);
+        } catch {
+          this._animatingZoom = false;
+        }
+      };
+    }
+  }
+}
+
 export type MapLayerType =
   | 'osm'
   | 'google-streets'
@@ -191,7 +236,9 @@ const animateMarkerTo = ({
   if (Math.abs(deltaLat) > 0.05 || Math.abs(deltaLng) > 0.05) {
     marker.setLatLng([targetLat, targetLng]);
     if (clusterGroup && clusterGroup.hasLayer(marker)) {
-      clusterGroup.refreshClusters(marker);
+      try {
+        clusterGroup.refreshClusters(marker);
+      } catch (_) {}
     }
     return;
   }
@@ -200,13 +247,10 @@ const animateMarkerTo = ({
   const duration = durationMs;
 
   const animate = (currentTime: number) => {
-    // If map is currently animating zoom, snap to target LatLng immediately
+    // If map is currently animating zoom, snap to target LatLng immediately and do NOT mutate clusters during zoom
     const m = (marker as any)._map;
     if (m && m._animatingZoom) {
       marker.setLatLng([targetLat, targetLng]);
-      if (clusterGroup && clusterGroup.hasLayer(marker)) {
-        clusterGroup.refreshClusters(marker);
-      }
       (marker as any)._animId = null;
       return;
     }
@@ -224,8 +268,10 @@ const animateMarkerTo = ({
       (marker as any)._animId = requestAnimationFrame(animate);
     } else {
       marker.setLatLng([targetLat, targetLng]);
-      if (clusterGroup && clusterGroup.hasLayer(marker)) {
-        clusterGroup.refreshClusters(marker);
+      if (clusterGroup && clusterGroup.hasLayer(marker) && (!m || !m._animatingZoom)) {
+        try {
+          clusterGroup.refreshClusters(marker);
+        } catch (_) {}
       }
       (marker as any)._animId = null;
     }
@@ -949,10 +995,12 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
     setMapZoomTier(getZoomTier(initialZoom));
 
     const handleZoomEnd = () => {
-      if (!mapRef.current) return;
-      const currentZ = mapRef.current.getZoom();
-      const nextTier = getZoomTier(currentZ);
-      setMapZoomTier((prev) => (prev !== nextTier ? nextTier : prev));
+      requestAnimationFrame(() => {
+        if (!mapRef.current) return;
+        const currentZ = mapRef.current.getZoom();
+        const nextTier = getZoomTier(currentZ);
+        setMapZoomTier((prev) => (prev !== nextTier ? nextTier : prev));
+      });
     };
 
     mapRef.current.on('zoomend', handleZoomEnd);
@@ -970,7 +1018,12 @@ const GPSwoxMap: React.FC<GPSwoxMapProps> = ({
         resizeObserverRef.current = null;
       }
       if (mapRef.current) {
-        mapRef.current.remove();
+        try {
+          mapRef.current.stop();
+        } catch (_) {}
+        try {
+          mapRef.current.remove();
+        } catch (_) {}
         mapRef.current = null;
       }
       tileLayersCacheRef.current.clear();
